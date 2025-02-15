@@ -72,6 +72,7 @@ public static class ExternalProjectBuilderExtensions
 		string csprojFile, string launchSettingsJson, ExternalProjectResourceOptions options)
 	{
 		string projectFolder = Path.GetDirectoryName(csprojFile)!;
+		string projectFileName = Path.GetFileName(projectFolder);
 
 		// Use system.text.json to Parse the launchSettings.json file to get the launch profile. The profile is the first one with a "commandName" of "Project".
 		LaunchProfile? launchProfile;
@@ -105,7 +106,7 @@ public static class ExternalProjectBuilderExtensions
 		IResourceBuilder<ExecutableResource> execBuilder = builder.AddExecutable(
 				name, "dotnet",
 				projectFolder,
-				"run", "--no-launch-profile")
+				"run", "--project", projectFileName, "--no-launch-profile")
 			.WithExecutableProjectDefaults(launchProfile, launchProfileName)
 			.WithCommand("Debug", "Debug", ExternalProjectBuilderExtensions.AttachDebuger,
 				ExternalProjectBuilderExtensions.DebugStateChange,
