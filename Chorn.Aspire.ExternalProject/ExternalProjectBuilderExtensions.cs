@@ -72,7 +72,7 @@ public static class ExternalProjectBuilderExtensions
 		string csprojFile, string launchSettingsJson, ExternalProjectResourceOptions options)
 	{
 		string projectFolder = Path.GetDirectoryName(csprojFile)!;
-		string projectFileName = Path.GetFileName(projectFolder);
+		string projectFileName = Path.GetFileName(csprojFile);
 
 		// Use system.text.json to Parse the launchSettings.json file to get the launch profile. The profile is the first one with a "commandName" of "Project".
 		LaunchProfile? launchProfile;
