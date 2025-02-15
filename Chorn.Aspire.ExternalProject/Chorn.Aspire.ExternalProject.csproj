@@ -3,7 +3,6 @@
 	<PropertyGroup>
 		<TargetFramework>net8.0</TargetFramework>
 		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-		<IsPackable>true</IsPackable>
 		<Authors>Christoph Hornung</Authors>
 		<PackageId>Chorn.Aspire.ExternalProject</PackageId>
 		<Version>1.0.0-rc1</Version>
