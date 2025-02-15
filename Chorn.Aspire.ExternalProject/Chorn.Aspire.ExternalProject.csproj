@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+		<Authors>Christoph Hornung</Authors>
+		<PackageId>Chorn.Aspire.ExternalProject</PackageId>
+		<Version>1.0.0</Version>
+		<Copyright>Christoph Hornung</Copyright>
+		<Description>Adds the ability to add projects in other solutions to the Aspire AppHost.</Description>
+		<PackageProjectUrl>https://github.com/ChristophHornung/Aspire.ExternalProject</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/ChristophHornung/Aspire.ExternalProject</RepositoryUrl>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<GenerateDocumentationFile>True</GenerateDocumentationFile>
+		<PackageReleaseNotes>
+			v.1.0.0
+			- First release
+		</PackageReleaseNotes>
+		<SignAssembly>True</SignAssembly>
+		<AssemblyOriginatorKeyFile>..\signingkey.snk</AssemblyOriginatorKeyFile>
+	</PropertyGroup>
+	<ItemGroup>
+		<PackageReference Include="Aspire.Hosting.AppHost" Version="9.0.0" />
+	</ItemGroup>
+</Project>
