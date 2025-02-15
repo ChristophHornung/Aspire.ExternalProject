@@ -6,7 +6,7 @@
 		<IsPackable>true</IsPackable>
 		<Authors>Christoph Hornung</Authors>
 		<PackageId>Chorn.Aspire.ExternalProject</PackageId>
-		<Version>1.0.0-rc2</Version>
+		<Version>1.0.0-rc3</Version>
 		<Copyright>Christoph Hornung</Copyright>
 		<Description>Adds the ability to add projects in other solutions to the Aspire AppHost.</Description>
 		<PackageProjectUrl>https://github.com/ChristophHornung/Aspire.ExternalProject</PackageProjectUrl>
