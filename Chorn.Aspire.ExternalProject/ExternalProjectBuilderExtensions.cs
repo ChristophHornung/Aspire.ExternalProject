@@ -30,8 +30,8 @@ public static class ExternalProjectBuilderExtensions
 	/// <param name="name">The name of the external project resource.</param>
 	/// <param name="csprojPath">The path to the csproj file.</param>
 	/// <param name="configure">A callback to configure the external project resource options.</param>
-	/// <returns>The builder with the project added.</returns>
-	public static IDistributedApplicationBuilder AddExternalProject(this IDistributedApplicationBuilder builder,
+	/// <returns>The resource builder for the executable resource.</returns>
+	public static IResourceBuilder<ExecutableResource> AddExternalProject(this IDistributedApplicationBuilder builder,
 		[ResourceName] string name, string csprojPath, Action<ExternalProjectResourceOptions>? configure = null)
 	{
 		ExternalProjectResourceOptions options = new();
@@ -46,15 +46,13 @@ public static class ExternalProjectBuilderExtensions
 			string launchSettingsJson = File.ReadAllText(Path.Combine(propertiesFolder, "launchSettings.json"));
 
 			// If a launchSettings.json file is found, add the project to the builder.
-			ExternalProjectBuilderExtensions.AddProject(builder, name, csprojPath, launchSettingsJson, options);
+			return ExternalProjectBuilderExtensions.AddProject(builder, name, csprojPath, launchSettingsJson, options);
 		}
 		else
 		{
 			throw new InvalidOperationException(
 				"Properties/launchSettings.json file not found. This is required for now.");
 		}
-
-		return builder;
 	}
 
 	internal static bool ShouldInjectEndpointEnvironment(this Resource r, EndpointReference e)
@@ -70,7 +68,7 @@ public static class ExternalProjectBuilderExtensions
 		return true;
 	}
 
-	private static IDistributedApplicationBuilder AddProject(IDistributedApplicationBuilder builder, string name,
+	private static IResourceBuilder<ExecutableResource> AddProject(IDistributedApplicationBuilder builder, string name,
 		string csprojFile, string launchSettingsJson, ExternalProjectResourceOptions options)
 	{
 		string projectFolder = Path.GetDirectoryName(csprojFile)!;
@@ -124,11 +122,11 @@ public static class ExternalProjectBuilderExtensions
 			{
 				execBuilder.WithHealthCheck(healthCheckKey);
 				builder.Services.AddHealthChecks().Add(new HealthCheckRegistration(healthCheckKey,
-					sp => new GitUpToDateHealthCheck(projectFolder), null, null));
+					_ => new GitUpToDateHealthCheck(projectFolder), null, null));
 			}
 		}
 
-		return builder;
+		return execBuilder;
 	}
 
 	private static ResourceCommandState DebugStateChange(UpdateCommandStateContext arg)
@@ -185,8 +183,6 @@ public static class ExternalProjectBuilderExtensions
 					{ Success = false, ErrorMessage = "No child process found for dotnet.exe" });
 			}
 
-			Debug.WriteLine($"Attaching to {child.Id}");
-
 			// Attach the debugger via vsjitdebugger
 			ProcessStartInfo startInfo = new ProcessStartInfo
 			{
@@ -198,10 +194,9 @@ public static class ExternalProjectBuilderExtensions
 			};
 
 
-			Process process = Process.Start(startInfo)!;
+			Process.Start(startInfo);
 
 			// We don't wait for the process to exit, as the debugger will keep running.
-
 			return Task.FromResult(new ExecuteCommandResult() { Success = true });
 		}
 		catch (Exception e)
