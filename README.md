@@ -44,6 +44,8 @@ builder.AddExternalProject("resourcename", "path/to/external/project.csproj", op
 * Currently the `ExcludeLaunchProfile` and `ExcludeKestrelEndpoint` properties on the resource options are ignored.
 * Publish operations probably won't work as expected.
 * Starting the debugger via the 'Debug' command in the dashboard might not attach correctly.
+* Running multiple external projects at the same time might lead to build problems if they have common dependencies.
+If you run into any issues try an explicit start for the external projects to avoid this issue. (see [here for the code](https://github.com/dotnet/aspire/issues/5851#issuecomment-2569191597))
 
 ## Motivation
 Often it is not feasible to have a single solution for all projects, especially when working across multiple repositories.
