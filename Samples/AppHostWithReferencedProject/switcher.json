@@ -1,0 +1,10 @@
+{
+  "solution": "ExternalProjectExample.AppHost.sln",
+  "solutionFolder": null,
+  "mappings": {
+    "Chorn.Aspire.ExternalProject": [
+      "../../Chorn.Aspire.ExternalProject/Chorn.Aspire.ExternalProject.csproj",
+    ]
+  },
+  "removeProjects": true
+}
