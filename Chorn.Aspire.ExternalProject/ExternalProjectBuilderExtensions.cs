@@ -112,14 +112,14 @@ public static class ExternalProjectBuilderExtensions
 				ExternalProjectBuilderExtensions.DebugStateChange,
 				iconName: "Bug");
 
-		if (!options.WithoutGitSupport)
+		if (!options.SkipGitSupport)
 		{
 			string healthCheckKey = $"{name}_git_check";
 
 			execBuilder.WithCommand("GitPull", "Git Pull",
 				ctx => ExternalProjectBuilderExtensions.GitUpdate(ctx, projectFolder),
 				ExternalProjectBuilderExtensions.GitUpdateStateChange, iconName: "BranchRequest");
-			if (!options.WithoutGitHealthCheck)
+			if (options.EnableGitHealthCheck)
 			{
 				execBuilder.WithHealthCheck(healthCheckKey);
 				builder.Services.AddHealthChecks().Add(new HealthCheckRegistration(healthCheckKey,

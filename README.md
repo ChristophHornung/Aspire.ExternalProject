@@ -26,13 +26,17 @@ It will also add two commands to the dashboard:
 * 'Debug' - Starts the debugger for the external project by starting the manual 'attach to VisualStudio' process.
 * 'Git Pull" - Pulls the latest changes from the git repository of the external project.
 
-as well as a health check to check if your branch is up to date with the remote.
-
-You can remove the GIT integration or the health check by setting the `WithoutGitSupport` and `WithoutGitHealthCheck` properties to in the resource options.
+You can remove the GIT integration by setting the `SkipGitSupport` in the resource options.
 ```csharp
 builder.AddExternalProject("resourcename", "path/to/external/project.csproj", options => {
-	options.WithoutGitSupport = true;
-	options.WithoutGitHealthCheck = true;
+	options.SkipGitSupport = true;
+});
+```
+
+You can add a GIT up-to-date health check to the external project by setting the `EnableGitHealthCheck` in the resource options.
+```csharp
+builder.AddExternalProject("resourcename", "path/to/external/project.csproj", options => {
+	options.EnableGitHealthCheck = true;
 });
 ```
 

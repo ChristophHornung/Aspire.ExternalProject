@@ -9,15 +9,13 @@ public class ExternalProjectResourceOptions : ProjectResourceOptions
 	///If set to <c>true</c>, the external project will not have Git support.
 	/// </summary>
 	/// <value><c>true</c> if without Git support; otherwise, <c>false</c>.</value>
-	public bool WithoutGitSupport { get; set; }
+	public bool SkipGitSupport { get; set; }
 
 	/// <summary>
-	/// If set to <c>true</c>, the external project will not have a Git health check.
+	/// If set to <c>true</c>, the external project will have a Git health check.
 	/// </summary>
-	/// <value><c>true</c> if without Git health check; otherwise, <c>false</c>.</value>
 	/// <remarks>
-	/// This is only relevant if <see cref="WithoutGitSupport"/> is <c>false</c>.
+	/// This is only relevant if <see cref="SkipGitSupport"/> is not <c>ture</c>.
 	/// </remarks>
-	/// <seealso cref="WithoutGitSupport"/>
-	public bool WithoutGitHealthCheck { get; set; }
+	public bool EnableGitHealthCheck { get; set; }
 }
