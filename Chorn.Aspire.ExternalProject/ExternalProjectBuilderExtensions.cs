@@ -37,6 +37,11 @@ public static class ExternalProjectBuilderExtensions
 		ExternalProjectResourceOptions options = new();
 		configure?.Invoke(options);
 
+		if (!File.Exists(csprojPath))
+		{
+			throw new ArgumentException($"The csproj file '{csprojPath}' was not found.", nameof(csprojPath));
+		}
+
 		string folder = Path.GetDirectoryName(csprojPath)!;
 		// Check if the folder contains a launchSettings.json file.
 		string propertiesFolder = Path.Combine(folder, "Properties");
