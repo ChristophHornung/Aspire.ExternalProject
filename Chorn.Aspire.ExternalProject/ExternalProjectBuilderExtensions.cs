@@ -1,13 +1,12 @@
 ﻿namespace Chorn.Aspire.ExternalProject;
 
-using System.Collections;
 using System.Diagnostics;
-using System.Reflection;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 
@@ -34,6 +33,9 @@ public static class ExternalProjectBuilderExtensions
 	public static IResourceBuilder<ExecutableResource> AddExternalProject(this IDistributedApplicationBuilder builder,
 		[ResourceName] string name, string csprojPath, Action<ExternalProjectResourceOptions>? configure = null)
 	{
+		// Make sure we register the PidWatcher service if not already registered.
+		builder.Services.TryAddSingleton<PidWatcher>();
+
 		ExternalProjectResourceOptions options = new();
 		configure?.Invoke(options);
 
@@ -51,7 +53,9 @@ public static class ExternalProjectBuilderExtensions
 			string launchSettingsJson = File.ReadAllText(Path.Combine(propertiesFolder, "launchSettings.json"));
 
 			// If a launchSettings.json file is found, add the project to the builder.
-			return ExternalProjectBuilderExtensions.AddProject(builder, name, csprojPath, launchSettingsJson, options);
+			IResourceBuilder<ExecutableResource> execBuilder =
+				ExternalProjectBuilderExtensions.AddProject(builder, name, csprojPath, launchSettingsJson, options);
+			return execBuilder;
 		}
 		else
 		{
@@ -113,8 +117,9 @@ public static class ExternalProjectBuilderExtensions
 				projectFolder,
 				"run", "--project", projectFileName, "--no-launch-profile")
 			.WithExecutableProjectDefaults(launchProfile, launchProfileName)
-			.WithCommand("Debug", "Debug", ExternalProjectBuilderExtensions.AttachDebuger,
-				ExternalProjectBuilderExtensions.DebugStateChange,
+			.WithCommand("Debug", "Debug",
+				ctx => ExternalProjectBuilderExtensions.AttachDebugger(ctx, name),
+				ctx => ExternalProjectBuilderExtensions.DebugStateChange(ctx, name),
 				iconName: "Bug");
 
 		if (!options.SkipGitSupport)
@@ -135,8 +140,22 @@ public static class ExternalProjectBuilderExtensions
 		return execBuilder;
 	}
 
-	private static ResourceCommandState DebugStateChange(UpdateCommandStateContext arg)
+	private static ResourceCommandState DebugStateChange(UpdateCommandStateContext arg, string name)
 	{
+		// We seem to be unable to get the current resource snapshot when executing the command, so we need to store the pid when the resource state changes.
+		PidWatcher pidWatcher = arg.ServiceProvider.GetRequiredService<PidWatcher>();
+
+		ResourcePropertySnapshot? pidProperty =
+			arg.ResourceSnapshot.Properties.FirstOrDefault(p => p.Name == "executable.pid");
+		if (pidProperty != null && pidProperty.Value is int pid && pid != 0)
+		{
+			pidWatcher.Store(name, pid);
+		}
+		else
+		{
+			pidWatcher.Store(name, null);
+		}
+
 		return arg.ResourceSnapshot.State?.Text == "Running"
 			? ResourceCommandState.Enabled
 			: ResourceCommandState.Hidden;
@@ -149,36 +168,17 @@ public static class ExternalProjectBuilderExtensions
 			: ResourceCommandState.Disabled;
 	}
 
-	private static Task<ExecuteCommandResult> AttachDebuger(ExecuteCommandContext arg)
+	private static Task<ExecuteCommandResult> AttachDebugger(ExecuteCommandContext arg, string resourceName)
 	{
+		PidWatcher pidWatcher = arg.ServiceProvider.GetRequiredService<PidWatcher>();
+		int? pid = pidWatcher.Get(resourceName);
+		if (pid == null)
+		{
+			return Task.FromResult(new ExecuteCommandResult() { Success = false, ErrorMessage = "No pid found" });
+		}
+
 		try
 		{
-			// Get the Aspire.Hosting.Dcp.IDcpExecutor type via reflection (is internal) from all currently loaded assemblies.
-			Assembly hostinAssembly = Assembly.GetAssembly(typeof(IDistributedApplicationBuilder))!;
-			Type dcpExecutorType = hostinAssembly.GetTypes().FirstOrDefault(t => t.Name == "ApplicationExecutor")!;
-			Type executableType = hostinAssembly.GetTypes().FirstOrDefault(t => t.Name == "Executable")!;
-
-			// Via reflection get the _executablesMap private field
-			FieldInfo executablesMapField =
-				dcpExecutorType.GetField("_executablesMap", BindingFlags.Instance | BindingFlags.NonPublic)!;
-
-			object dcpExecutor = arg.ServiceProvider.GetRequiredService(dcpExecutorType);
-
-			// Get the _executablesMap field value
-			IDictionary executablesMap = (IDictionary)executablesMapField.GetValue(dcpExecutor)!;
-
-			// Get the ExecutableResource
-			object o = executablesMap[arg.ResourceName];
-
-			// o is an executableType we get the "Status" property
-			PropertyInfo statusProperty = executableType.GetProperty("Status")!;
-			object status = statusProperty.GetValue(o)!;
-
-			// Serialize the status object to JSON and get the "pid" property
-			string json = JsonSerializer.Serialize(status);
-			JsonElement jsonElement = JsonSerializer.Deserialize<JsonElement>(json)!;
-			int pid = jsonElement.GetProperty("pid").GetInt32()!;
-
 			// The pid is the pid of dotnet.exe, we need to attach the debugger to the first child process that is not a dotnet process.
 			Process? child = Process.GetProcesses()
 				.FirstOrDefault(p => p.ProcessName != "dotnet" && p.GetParent()?.Id == pid);
