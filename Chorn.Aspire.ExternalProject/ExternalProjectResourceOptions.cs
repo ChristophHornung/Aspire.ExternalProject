@@ -15,7 +15,15 @@ public class ExternalProjectResourceOptions : ProjectResourceOptions
 	/// If set to <c>true</c>, the external project will have a Git health check.
 	/// </summary>
 	/// <remarks>
-	/// This is only relevant if <see cref="SkipGitSupport"/> is not <c>ture</c>.
+	/// This is only relevant if <see cref="SkipGitSupport"/> is not <c>true</c>.
 	/// </remarks>
+	/// <value><c>true</c> if enable Git health check; otherwise, <c>false</c>.</value>
 	public bool EnableGitHealthCheck { get; set; }
+
+	/// <summary>
+	/// The URI to launch the debugger for the external project. If <c>null</c> uses
+	/// the 'vsjitdebugger' command.
+	/// </summary>
+	/// <value>The launch debugger URI.</value>
+	public string? LaunchDebuggerUri { get; set; }
 }

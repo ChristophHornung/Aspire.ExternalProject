@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add service defaults & Aspire client integrations.
@@ -17,6 +19,9 @@ app.UseExceptionHandler();
 if (app.Environment.IsDevelopment())
 {
 	app.MapOpenApi();
+
+	// Launch the debugger when the /debug endpoint is hit. This will be used by the ExternalProject integration.
+	app.MapPost("/debug", () => { Debugger.Launch(); });
 }
 
 string[] summaries =

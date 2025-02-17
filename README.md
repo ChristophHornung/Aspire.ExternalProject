@@ -40,10 +40,19 @@ builder.AddExternalProject("resourcename", "path/to/external/project.csproj", op
 });
 ```
 
+By default we use `vsjitdebugger` to attach the debugger to the external project. This does not seem to work reliably, as a viable alternative
+you can set the `DebuggerUri` in the resource options to call an endpoint in your external project to start the debugger via
+`Debugger.Launch()`. (See the sample for the external project code)
+```csharp
+builder.AddExternalProject("resourcename", "path/to/external/project.csproj", options => {
+	options.LaunchDebuggerUri = "/debugger";
+});
+```
+
 ## Limitations and Known Issues
 * Currently the `ExcludeLaunchProfile` and `ExcludeKestrelEndpoint` properties on the resource options are ignored.
 * Publish operations probably won't work as expected.
-* Starting the debugger via the 'Debug' command in the dashboard might not attach correctly.
+* Starting the debugger via the default 'Debug' command in the dashboard might not attach correctly via vsjitdebugger.
 * Running multiple external projects at the same time might lead to build problems if they have common dependencies.
 If you run into any issues try an explicit start for the external projects to avoid this issue. (see [here for the code](https://github.com/dotnet/aspire/issues/5851#issuecomment-2569191597))
 

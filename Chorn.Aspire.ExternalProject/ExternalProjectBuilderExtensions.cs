@@ -34,7 +34,7 @@ public static class ExternalProjectBuilderExtensions
 		[ResourceName] string name, string csprojPath, Action<ExternalProjectResourceOptions>? configure = null)
 	{
 		// Make sure we register the PidWatcher service if not already registered.
-		builder.Services.TryAddSingleton<PidWatcher>();
+		builder.Services.TryAddSingleton<SnapshotWatcher>();
 
 		ExternalProjectResourceOptions options = new();
 		configure?.Invoke(options);
@@ -118,7 +118,7 @@ public static class ExternalProjectBuilderExtensions
 				"run", "--project", projectFileName, "--no-launch-profile")
 			.WithExecutableProjectDefaults(launchProfile, launchProfileName)
 			.WithCommand("Debug", "Debug",
-				ctx => ExternalProjectBuilderExtensions.AttachDebugger(ctx, name),
+				ctx => ExternalProjectBuilderExtensions.AttachDebugger(ctx, name, options.LaunchDebuggerUri),
 				ctx => ExternalProjectBuilderExtensions.DebugStateChange(ctx, name),
 				iconName: "Bug");
 
@@ -143,18 +143,8 @@ public static class ExternalProjectBuilderExtensions
 	private static ResourceCommandState DebugStateChange(UpdateCommandStateContext arg, string name)
 	{
 		// We seem to be unable to get the current resource snapshot when executing the command, so we need to store the pid when the resource state changes.
-		PidWatcher pidWatcher = arg.ServiceProvider.GetRequiredService<PidWatcher>();
-
-		ResourcePropertySnapshot? pidProperty =
-			arg.ResourceSnapshot.Properties.FirstOrDefault(p => p.Name == "executable.pid");
-		if (pidProperty != null && pidProperty.Value is int pid && pid != 0)
-		{
-			pidWatcher.Store(name, pid);
-		}
-		else
-		{
-			pidWatcher.Store(name, null);
-		}
+		SnapshotWatcher snapshotWatcher = arg.ServiceProvider.GetRequiredService<SnapshotWatcher>();
+		snapshotWatcher.Store(name, arg.ResourceSnapshot);
 
 		return arg.ResourceSnapshot.State?.Text == "Running"
 			? ResourceCommandState.Enabled
@@ -168,13 +158,26 @@ public static class ExternalProjectBuilderExtensions
 			: ResourceCommandState.Disabled;
 	}
 
-	private static Task<ExecuteCommandResult> AttachDebugger(ExecuteCommandContext arg, string resourceName)
+	private static async Task<ExecuteCommandResult> AttachDebugger(ExecuteCommandContext arg, string resourceName,
+		string? launchDebuggerUri)
 	{
-		PidWatcher pidWatcher = arg.ServiceProvider.GetRequiredService<PidWatcher>();
-		int? pid = pidWatcher.Get(resourceName);
+		SnapshotWatcher snapshotWatcher = arg.ServiceProvider.GetRequiredService<SnapshotWatcher>();
+
+		if (launchDebuggerUri != null)
+		{
+			return await ExternalProjectBuilderExtensions.AttachDebuggerViaUrl(arg, resourceName, launchDebuggerUri,
+				snapshotWatcher);
+		}
+
+		return ExternalProjectBuilderExtensions.AttachDebuggerViaVsjit(resourceName, snapshotWatcher);
+	}
+
+	private static ExecuteCommandResult AttachDebuggerViaVsjit(string resourceName, SnapshotWatcher snapshotWatcher)
+	{
+		int? pid = snapshotWatcher.GetPid(resourceName);
 		if (pid == null)
 		{
-			return Task.FromResult(new ExecuteCommandResult() { Success = false, ErrorMessage = "No pid found" });
+			return new ExecuteCommandResult() { Success = false, ErrorMessage = "No pid found" };
 		}
 
 		try
@@ -185,8 +188,8 @@ public static class ExternalProjectBuilderExtensions
 
 			if (child == null)
 			{
-				return Task.FromResult(new ExecuteCommandResult()
-					{ Success = false, ErrorMessage = "No child process found for dotnet.exe" });
+				return new ExecuteCommandResult()
+					{ Success = false, ErrorMessage = "No child process found for dotnet.exe" };
 			}
 
 			// Attach the debugger via vsjitdebugger
@@ -203,11 +206,44 @@ public static class ExternalProjectBuilderExtensions
 			Process.Start(startInfo);
 
 			// We don't wait for the process to exit, as the debugger will keep running.
-			return Task.FromResult(new ExecuteCommandResult() { Success = true });
+			return new ExecuteCommandResult() { Success = true };
 		}
 		catch (Exception e)
 		{
-			return Task.FromResult(new ExecuteCommandResult() { Success = false, ErrorMessage = e.Message });
+			return new ExecuteCommandResult() { Success = false, ErrorMessage = e.Message };
+		}
+	}
+
+	private static async Task<ExecuteCommandResult> AttachDebuggerViaUrl(ExecuteCommandContext arg, string resourceName,
+		string launchDebuggerUri, SnapshotWatcher snapshotWatcher)
+	{
+		// If the launch debugger uri is set we call that instead of trying to attach the debugger via vsjitdebugger.
+		string? baseUrl = snapshotWatcher.GetHttpsOrHttpBaseUrl(resourceName);
+		if (baseUrl == null)
+		{
+			return new ExecuteCommandResult() { Success = false, ErrorMessage = "No base url found" };
+		}
+
+		string url = $"{baseUrl}{launchDebuggerUri}";
+		// TODO: Should we register a HttpClient as a service instead of creating a new one each time?
+		// No HttpClientFactory or HttpClient is registered by default, so we create a new one.
+		HttpClient httpClient = new HttpClient();
+
+		// POST to the launch debugger uri.
+		try
+		{
+			HttpResponseMessage result = await httpClient.PostAsync(url, new StringContent(""));
+
+			if (!result.IsSuccessStatusCode)
+			{
+				return new ExecuteCommandResult() { Success = false, ErrorMessage = result.ReasonPhrase };
+			}
+
+			return new ExecuteCommandResult() { Success = true };
+		}
+		catch (Exception e)
+		{
+			return new ExecuteCommandResult() { Success = false, ErrorMessage = e.Message };
 		}
 	}
 
