@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WeatherApi", "WeatherApi\We
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SampleServiceDefaults", "SampleServiceDefaults\SampleServiceDefaults.csproj", "{BA05F79A-20BD-A241-18BB-553FAC791576}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Weather.Prediction.Api", "Weather.Prediction.Api\Weather.Prediction.Api.csproj", "{610A3B80-CF82-4319-B7DB-88AB3B5F39E3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{BA05F79A-20BD-A241-18BB-553FAC791576}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BA05F79A-20BD-A241-18BB-553FAC791576}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{BA05F79A-20BD-A241-18BB-553FAC791576}.Release|Any CPU.Build.0 = Release|Any CPU
+		{610A3B80-CF82-4319-B7DB-88AB3B5F39E3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{610A3B80-CF82-4319-B7DB-88AB3B5F39E3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{610A3B80-CF82-4319-B7DB-88AB3B5F39E3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{610A3B80-CF82-4319-B7DB-88AB3B5F39E3}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

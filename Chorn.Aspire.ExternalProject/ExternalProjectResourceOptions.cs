@@ -26,4 +26,11 @@ public class ExternalProjectResourceOptions : ProjectResourceOptions
 	/// </summary>
 	/// <value>The launch debugger URI.</value>
 	public string? LaunchDebuggerUri { get; set; }
+
+	/// <summary>
+	/// An optional solution group for the external project.
+	/// Projects inside the same solution group will wait for each other to start in
+	/// order to avoid conflicts during build.
+	/// </summary>
+	public string? SolutionGroup { get; set; }
 }

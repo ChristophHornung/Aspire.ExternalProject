@@ -6,7 +6,7 @@
 		<IsPackable>true</IsPackable>
 		<Authors>Christoph Hornung</Authors>
 		<PackageId>Chorn.Aspire.ExternalProject</PackageId>
-		<Version>1.1.0</Version>
+		<Version>1.2.0</Version>
 		<Copyright>Christoph Hornung</Copyright>
 		<Description>Adds the ability to add projects in other solutions to the Aspire AppHost.</Description>
 		<PackageProjectUrl>https://github.com/ChristophHornung/Aspire.ExternalProject</PackageProjectUrl>
@@ -15,6 +15,9 @@
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
 		<PackageReleaseNotes>
+			v.1.2.0
+			- Updated to Aspire 9.1.0
+			- Added SolutionGroup property in the settings for startup-avoidance
 			v.1.1.0
 			- Improved pid retrieval and added option to launch a debugger from inside the external project
 			v.1.0.0
@@ -24,7 +27,7 @@
 		<AssemblyOriginatorKeyFile>..\signingkey.snk</AssemblyOriginatorKeyFile>
 	</PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="Aspire.Hosting.AppHost" Version="9.0.0" />
+		<PackageReference Include="Aspire.Hosting.AppHost" Version="[9.1.0, 10.0.0)" />
 	</ItemGroup>
 	<ItemGroup>
 		<None Include="..\README.md" Pack="true" PackagePath="\" />
