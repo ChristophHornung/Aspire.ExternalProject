@@ -1,10 +1,18 @@
 ﻿{
 	"profiles": {
-		"PredictionrApi": {
+		"PredictionApi": {
 			"commandName": "Project",
 			"launchBrowser": true,
 			"environmentVariables": {
 				"ASPNETCORE_ENVIRONMENT": "Development"
+			},
+			"applicationUrl": "https://localhost:58989;http://localhost:58990"
+		},
+		"PredictionApiProduction": {
+			"commandName": "Project",
+			"launchBrowser": true,
+			"environmentVariables": {
+				"ASPNETCORE_ENVIRONMENT": "Production"
 			},
 			"applicationUrl": "https://localhost:58989;http://localhost:58990"
 		}

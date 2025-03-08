@@ -1,12 +1,12 @@
 {
-  "profiles": {
-    "WeatherApi": {
-      "commandName": "Project",
-      "launchBrowser": true,
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      },
-      "applicationUrl": "https://localhost:58987;http://localhost:58988"
-    }
-  }
+	"profiles": {
+		"WeatherApi": {
+			"commandName": "Project",
+			"launchBrowser": true,
+			"environmentVariables": {
+				"ASPNETCORE_ENVIRONMENT": "Development"
+			},
+			"applicationUrl": "https://localhost:58987;http://localhost:58988"
+		}
+	}
 }

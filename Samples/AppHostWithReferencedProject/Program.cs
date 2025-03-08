@@ -40,6 +40,8 @@ builder.AddExternalProject("WeatherPredictionApi", predictionApiPath, cfg =>
 	cfg.LaunchDebuggerUri = "/debug";
 
 	cfg.SolutionGroup="WeatherSolution";
+
+	cfg.LaunchProfileName = "PredictionApiProduction";
 });
 
 

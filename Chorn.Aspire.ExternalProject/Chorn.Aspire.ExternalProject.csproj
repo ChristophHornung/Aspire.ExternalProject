@@ -6,7 +6,7 @@
 		<IsPackable>true</IsPackable>
 		<Authors>Christoph Hornung</Authors>
 		<PackageId>Chorn.Aspire.ExternalProject</PackageId>
-		<Version>1.2.0</Version>
+		<Version>1.2.1</Version>
 		<Copyright>Christoph Hornung</Copyright>
 		<Description>Adds the ability to add projects in other solutions to the Aspire AppHost.</Description>
 		<PackageProjectUrl>https://github.com/ChristophHornung/Aspire.ExternalProject</PackageProjectUrl>
@@ -15,6 +15,9 @@
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
 		<PackageReleaseNotes>
+			v.1.2.1
+			- Fixed issue with launch profile not being set correctly
+			- Correctly adding the command line arguments to the external project on startup
 			v.1.2.0
 			- Updated to Aspire 9.1.0
 			- Added SolutionGroup property in the settings for startup-avoidance

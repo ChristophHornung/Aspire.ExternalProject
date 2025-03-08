@@ -86,6 +86,7 @@ public static class ExternalProjectBuilderExtensions
 		// Use system.text.json to Parse the launchSettings.json file to get the launch profile. The profile is the first one with a "commandName" of "Project".
 		LaunchProfile? launchProfile;
 		string? launchProfileName;
+		List<string> launchProfileCommandLineArgs;
 		try
 		{
 			LaunchSettings launchSettings =
@@ -94,8 +95,12 @@ public static class ExternalProjectBuilderExtensions
 
 			KeyValuePair<string, LaunchProfile> launchProfileKeyPair =
 				launchSettings.Profiles.FirstOrDefault(f =>
-					(options.LaunchProfileName != null && f.Key == options.LaunchProfileName)
-					|| f.Value.CommandName == "Project");
+					options.LaunchProfileName != null && f.Key == options.LaunchProfileName);
+			if (launchProfileKeyPair.Value == null)
+			{
+				launchProfileKeyPair = launchSettings.Profiles.FirstOrDefault(f => f.Value.CommandName == "Project");
+			}
+
 			if (launchProfileKeyPair.Key == null)
 			{
 				throw new InvalidOperationException(
@@ -106,16 +111,19 @@ public static class ExternalProjectBuilderExtensions
 
 			launchProfile = launchProfileKeyPair.Value;
 			launchProfileName = launchProfileKeyPair.Key;
+			launchProfileCommandLineArgs = ExternalProjectBuilderExtensions.GetLaunchProfileArgs(launchProfile);
 		}
 		catch (JsonException e)
 		{
 			throw new InvalidOperationException("Error parsing launchSettings.json", e);
 		}
 
+		List<string> launchParameters=["run", "--project", projectFileName, "--no-launch-profile"];
+		launchParameters.AddRange(launchProfileCommandLineArgs);
+
 		IResourceBuilder<ExecutableResource> execBuilder = builder.AddExecutable(
 				name, "dotnet",
-				projectFolder,
-				"run", "--project", projectFileName, "--no-launch-profile")
+				projectFolder, launchParameters.ToArray())
 			.WithExecutableProjectDefaults(launchProfile, launchProfileName)
 			.WithCommand("Debug", "Debug",
 				ctx => ExternalProjectBuilderExtensions.AttachDebugger(ctx, name, options.LaunchDebuggerUri),
@@ -157,7 +165,20 @@ public static class ExternalProjectBuilderExtensions
 
 		return execBuilder;
 	}
-
+	private static List<string> GetLaunchProfileArgs(LaunchProfile? launchProfile)
+	{
+		List<string> args = [];
+		if (launchProfile is not null && !string.IsNullOrWhiteSpace(launchProfile.CommandLineArgs))
+		{
+			List<string> cmdArgs = CommandLineArgsParser.Parse(launchProfile.CommandLineArgs);
+			if (cmdArgs.Count > 0)
+			{
+				args.Add("--");
+				args.AddRange(cmdArgs);
+			}
+		}
+		return args;
+	}
 	private static ResourceCommandState DebugStateChange(UpdateCommandStateContext arg, string name)
 	{
 		// We seem to be unable to get the current resource snapshot when executing the command, so we need to store the pid when the resource state changes.
