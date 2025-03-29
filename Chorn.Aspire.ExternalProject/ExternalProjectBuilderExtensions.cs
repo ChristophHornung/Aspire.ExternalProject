@@ -126,7 +126,7 @@ public static class ExternalProjectBuilderExtensions
 				projectFolder, launchParameters.ToArray())
 			.WithExecutableProjectDefaults(launchProfile, launchProfileName)
 			.WithCommand("Debug", "Debug",
-				ctx => ExternalProjectBuilderExtensions.AttachDebugger(ctx, name, options.LaunchDebuggerUri),
+				ctx => ExternalProjectBuilderExtensions.AttachDebugger(ctx, name, options),
 				ctx => ExternalProjectBuilderExtensions.DebugStateChange(ctx, name),
 				iconName: "Bug");
 
@@ -198,20 +198,22 @@ public static class ExternalProjectBuilderExtensions
 	}
 
 	private static async Task<ExecuteCommandResult> AttachDebugger(ExecuteCommandContext arg, string resourceName,
-		string? launchDebuggerUri)
+		ExternalProjectResourceOptions externalProjectOptions)
 	{
 		SnapshotWatcher snapshotWatcher = arg.ServiceProvider.GetRequiredService<SnapshotWatcher>();
 
-		if (launchDebuggerUri != null)
+		if (externalProjectOptions.LaunchDebuggerUri != null)
 		{
-			return await ExternalProjectBuilderExtensions.AttachDebuggerViaUrl(arg, resourceName, launchDebuggerUri,
+			return await ExternalProjectBuilderExtensions.AttachDebuggerViaUrl(arg, resourceName, externalProjectOptions.LaunchDebuggerUri,
 				snapshotWatcher);
 		}
 
-		return ExternalProjectBuilderExtensions.AttachDebuggerViaVsjit(resourceName, snapshotWatcher);
+		return ExternalProjectBuilderExtensions.AttachDebuggerViaVsjit(resourceName, snapshotWatcher,
+			externalProjectOptions);
 	}
 
-	private static ExecuteCommandResult AttachDebuggerViaVsjit(string resourceName, SnapshotWatcher snapshotWatcher)
+	private static ExecuteCommandResult AttachDebuggerViaVsjit(string resourceName, SnapshotWatcher snapshotWatcher,
+		ExternalProjectResourceOptions externalProjectOptions)
 	{
 		int? pid = snapshotWatcher.GetPid(resourceName);
 		if (pid == null)
@@ -234,8 +236,8 @@ public static class ExternalProjectBuilderExtensions
 			// Attach the debugger via vsjitdebugger
 			ProcessStartInfo startInfo = new ProcessStartInfo
 			{
-				FileName = "vsjitdebugger",
-				Arguments = $"-p {child.Id}",
+				FileName = externalProjectOptions.LaunchDebuggerCommand,
+				Arguments = externalProjectOptions.LaunchDebuggerArgs.Replace("<pid>", child.Id.ToString()),
 				UseShellExecute = false,
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
