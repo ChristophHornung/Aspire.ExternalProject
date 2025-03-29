@@ -237,7 +237,7 @@ public static class ExternalProjectBuilderExtensions
 			ProcessStartInfo startInfo = new ProcessStartInfo
 			{
 				FileName = externalProjectOptions.LaunchDebuggerCommand,
-				Arguments = externalProjectOptions.LaunchDebuggerArgs.Replace("<pid>", child.Id.ToString()),
+				Arguments = externalProjectOptions.LaunchDebuggerCommandArguments.Replace("<pid>", child.Id.ToString()),
 				UseShellExecute = false,
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,

@@ -28,15 +28,15 @@ public class ExternalProjectResourceOptions : ProjectResourceOptions
 	public string? LaunchDebuggerUri { get; set; }
 
 	/// <summary>
-	/// The command line command to launch the debugger for the external project.
+	/// The command line command to launch the debugger for the external project. Defaults to "vsjitdebugger".
 	/// </summary>
 	public string LaunchDebuggerCommand { get; set; } = "vsjitdebugger";
 
 	/// <summary>
 	/// The arguments to pass to the debugger when launching the external project.
-	/// "<pid>" will be replaced with the process id of the external project.
+	/// "&lt;pid&gt;" will be replaced with the process id of the external project.
 	/// </summary>
-	public string LaunchDebuggerArgs { get; set; } = "-p <pid>";
+	public string LaunchDebuggerCommandArguments { get; set; } = "-p <pid>";
 
 
 	/// <summary>
