@@ -1,6 +1,5 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
-// Taken from aspire repo.
 
 namespace Chorn.Aspire.ExternalProject;
 
@@ -8,6 +7,16 @@ using System.Text;
 
 internal static class CommandLineArgsParser
 {
+	/// <summary>Parses a command-line string into a command executable and the list of arguments</summary>
+	public static (string exe, string[] args) ParseCommand(string arguments)
+	{
+		var result = new List<string>();
+		CommandLineArgsParser.ParseArgumentsIntoList(arguments, result);
+		var exe = result.First();
+		var args = result.Count > 1 ? result.Skip(1).ToArray() : [];
+		return (exe, args);
+	}
+
 	/// <summary>Parses a command-line argument string into a list of arguments.</summary>
 	public static List<string> Parse(string arguments)
 	{
@@ -21,12 +30,12 @@ internal static class CommandLineArgsParser
 	/// <param name="results">The list into which the component arguments should be stored.</param>
 	/// <remarks>
 	/// This follows the rules outlined in "Parsing C++ Command-Line Arguments" at
-	/// https://msdn.microsoft.com/en-us/library/17w5ykft.aspx.
+	/// https://msdn.microsoft.com/library/17w5ykft.aspx.
 	/// </remarks>
 	// copied from https://github.com/dotnet/runtime/blob/404b286b23093cd93a985791934756f64a33483e/src/libraries/System.Diagnostics.Process/src/System/Diagnostics/Process.Unix.cs#L846-L945
 	private static void ParseArgumentsIntoList(string arguments, List<string> results)
 	{
-		// Iterate through all of the characters in the argument string.
+		// Iterate through all the characters in the argument string.
 		for (int i = 0; i < arguments.Length; i++)
 		{
 			while (i < arguments.Length && (arguments[i] == ' ' || arguments[i] == '\t'))

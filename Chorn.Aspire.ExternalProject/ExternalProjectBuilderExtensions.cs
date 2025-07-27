@@ -279,6 +279,8 @@ public static class ExternalProjectBuilderExtensions
 		string url = $"{baseUrl}{launchDebuggerUri}";
 		// TODO: Should we register a HttpClient as a service instead of creating a new one each time?
 		// No HttpClientFactory or HttpClient is registered by default, so we create a new one.
+		// (We could switch to  public static IResourceBuilder<TResource> WithHttpCommand<TResource>()
+		// (it registers a IHttpClientFactory service)
 		HttpClient httpClient = new HttpClient();
 
 		// POST to the launch debugger uri.
