@@ -32,7 +32,7 @@
 		<AssemblyOriginatorKeyFile>..\signingkey.snk</AssemblyOriginatorKeyFile>
 	</PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="Aspire.Hosting.AppHost" Version="[9.1.0, 10.0.0)" />
+		<PackageReference Include="Aspire.Hosting.AppHost" Version="9.3.1" />
 	</ItemGroup>
 	<ItemGroup>
 		<None Include="..\README.md" Pack="true" PackagePath="\" />
