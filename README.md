@@ -55,7 +55,8 @@ builder.AddExternalProject("resourcename", "path/to/external/project.csproj", op
 * Starting the debugger via the default 'Debug' command in the dashboard might not attach correctly via vsjitdebugger.
 * Running multiple external projects at the same time might lead to build problems if they have common dependencies.
 If you run into any issues you can set the `options.SolutionGroup` property, which will make sure the projects in the same
-solution group wait for each other. Or try an explicit start for the external projects to avoid this issue. (Via `WithExplicitStart()`)
+solution group wait for each other, make sure to have at least one health check that indicates
+the project started. Or try an explicit start for the external projects to avoid this issue. (Via `WithExplicitStart()`)
 
 ## Motivation
 Often it is not feasible to have a single solution for all projects, especially when working across multiple repositories.

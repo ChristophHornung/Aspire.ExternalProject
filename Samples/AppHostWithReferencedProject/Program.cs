@@ -25,7 +25,7 @@ builder.AddExternalProject("WeatherApi", weatherApiPath, cfg =>
 	// The external project has an endpoint to start the debugger.
 	cfg.LaunchDebuggerUri = "/debug";
 
-	cfg.SolutionGroup="WeatherSolution";
+	cfg.SolutionGroup = "WeatherSolution";
 });
 
 builder.AddExternalProject("WeatherPredictionApi", predictionApiPath, cfg =>
@@ -36,11 +36,10 @@ builder.AddExternalProject("WeatherPredictionApi", predictionApiPath, cfg =>
 	// You can enable the health check for the external project to get an indication when there are git changes to pull.
 	cfg.EnableGitHealthCheck = false;
 
-	cfg.SolutionGroup="WeatherSolution";
+	cfg.SolutionGroup = "WeatherSolution";
 
 	cfg.LaunchProfileName = "PredictionApiProduction";
 });
-
 
 
 builder.Build().Run();

@@ -154,8 +154,7 @@ public static class ExternalProjectBuilderExtensions
 
 		if (options.SolutionGroup != null)
 		{
-			execBuilder.WithAnnotation<ExternalProjectSolutionGroupAnnotation>(
-				new ExternalProjectSolutionGroupAnnotation(options.SolutionGroup));
+			execBuilder.WithAnnotation(new ExternalProjectSolutionGroupAnnotation(options.SolutionGroup));
 
 			// Find all other resources with the same solution group and add a dependency to them.
 			foreach (IResource resource in builder.Resources.Where(r => r != execBuilder.Resource))
@@ -164,8 +163,7 @@ public static class ExternalProjectBuilderExtensions
 				    .Any(a => a.SolutionGroup == options.SolutionGroup))
 				{
 					IResourceBuilder<IResource> resourceBuilder = builder.CreateResourceBuilder(resource);
-					execBuilder
-						.WaitFor(resourceBuilder);
+					execBuilder.WaitFor(resourceBuilder);
 				}
 			}
 		}
