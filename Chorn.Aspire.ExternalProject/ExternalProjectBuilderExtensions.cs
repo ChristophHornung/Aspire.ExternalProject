@@ -118,7 +118,7 @@ public static class ExternalProjectBuilderExtensions
 			throw new InvalidOperationException("Error parsing launchSettings.json", e);
 		}
 
-		List<string> launchParameters=["run", "--project", projectFileName, "--no-launch-profile"];
+		List<string> launchParameters = ["run", "--project", projectFileName, "--no-launch-profile"];
 		launchParameters.AddRange(launchProfileCommandLineArgs);
 
 		IResourceBuilder<ExecutableResource> execBuilder = builder.AddExecutable(
@@ -126,17 +126,24 @@ public static class ExternalProjectBuilderExtensions
 				projectFolder, launchParameters.ToArray())
 			.WithExecutableProjectDefaults(launchProfile, launchProfileName)
 			.WithCommand("Debug", "Debug",
-				ctx => ExternalProjectBuilderExtensions.AttachDebugger(ctx, name, options),
-				ctx => ExternalProjectBuilderExtensions.DebugStateChange(ctx, name),
-				iconName: "Bug");
+				ctx => ExternalProjectBuilderExtensions.AttachDebugger(ctx, name, options), new CommandOptions
+				{
+					UpdateState = ctx => ExternalProjectBuilderExtensions.DebugStateChange(ctx, name),
+					IconName = "Bug"
+				});
 
 		if (!options.SkipGitSupport)
 		{
 			string healthCheckKey = $"{name}_git_check";
 
-			execBuilder.WithCommand("GitPull", "Git Pull",
-				ctx => ExternalProjectBuilderExtensions.GitUpdate(ctx, projectFolder),
-				ExternalProjectBuilderExtensions.GitUpdateStateChange, iconName: "BranchRequest");
+			execBuilder
+				.WithCommand("GitPull", "Git Pull",
+					ctx => ExternalProjectBuilderExtensions.GitUpdate(ctx, projectFolder),
+					new CommandOptions
+					{
+						UpdateState = ExternalProjectBuilderExtensions.GitUpdateStateChange, 
+						IconName = "BranchRequest"
+					});
 			if (options.EnableGitHealthCheck)
 			{
 				execBuilder.WithHealthCheck(healthCheckKey);
@@ -151,7 +158,7 @@ public static class ExternalProjectBuilderExtensions
 				new ExternalProjectSolutionGroupAnnotation(options.SolutionGroup));
 
 			// Find all other resources with the same solution group and add a dependency to them.
-			foreach (IResource resource in builder.Resources.Where(r=>r!=execBuilder.Resource))
+			foreach (IResource resource in builder.Resources.Where(r => r != execBuilder.Resource))
 			{
 				if (resource.Annotations.OfType<ExternalProjectSolutionGroupAnnotation>()
 				    .Any(a => a.SolutionGroup == options.SolutionGroup))
@@ -165,6 +172,7 @@ public static class ExternalProjectBuilderExtensions
 
 		return execBuilder;
 	}
+
 	private static List<string> GetLaunchProfileArgs(LaunchProfile? launchProfile)
 	{
 		List<string> args = [];
@@ -177,8 +185,10 @@ public static class ExternalProjectBuilderExtensions
 				args.AddRange(cmdArgs);
 			}
 		}
+
 		return args;
 	}
+
 	private static ResourceCommandState DebugStateChange(UpdateCommandStateContext arg, string name)
 	{
 		// We seem to be unable to get the current resource snapshot when executing the command, so we need to store the pid when the resource state changes.
@@ -204,7 +214,8 @@ public static class ExternalProjectBuilderExtensions
 
 		if (externalProjectOptions.LaunchDebuggerUri != null)
 		{
-			return await ExternalProjectBuilderExtensions.AttachDebuggerViaUrl(arg, resourceName, externalProjectOptions.LaunchDebuggerUri,
+			return await ExternalProjectBuilderExtensions.AttachDebuggerViaUrl(arg, resourceName,
+				externalProjectOptions.LaunchDebuggerUri,
 				snapshotWatcher);
 		}
 
