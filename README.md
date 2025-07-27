@@ -53,6 +53,8 @@ builder.AddExternalProject("resourcename", "path/to/external/project.csproj", op
 * Currently the `ExcludeLaunchProfile` and `ExcludeKestrelEndpoint` properties on the resource options are ignored.
 * Publish operations probably won't work as expected.
 * Starting the debugger via the default 'Debug' command in the dashboard might not attach correctly via vsjitdebugger.
+* The most reliable and quick was to debug is to open a VS solution and simply use the "Debug->Reattach to Process" option.
+  If you are using Rider you can set the `LaunchDebuggerCommand/Arguments` to start rider with the correct process and solution.
 * Running multiple external projects at the same time might lead to build problems if they have common dependencies.
 If you run into any issues you can set the `options.SolutionGroup` property, which will make sure the projects in the same
 solution group wait for each other, make sure to have at least one health check that indicates
