@@ -120,6 +120,7 @@ public static class ExternalProjectBuilderExtensions
 
 		List<string> launchParameters = ["run", "--project", projectFileName, "--no-launch-profile"];
 		launchParameters.AddRange(launchProfileCommandLineArgs);
+		launchParameters.AddRange(options.AdditionalLaunchParameters);
 
 		IResourceBuilder<ExecutableResource> execBuilder = builder.AddExecutable(
 				name, "dotnet",

@@ -45,4 +45,9 @@ public class ExternalProjectResourceOptions : ProjectResourceOptions
 	/// order to avoid conflicts during build.
 	/// </summary>
 	public string? SolutionGroup { get; set; }
+
+ 	/// <summary>
+	/// Additional dotnet CLI arguments appended to the run command.
+	/// </summary>
+	public List<string> AdditionalLaunchParameters { get; set; } = [];
 }
