@@ -11,7 +11,7 @@ internal static class ProcessHelper
 	{
 		try
 		{
-			var pid = ProcessHelper.GetParentPid(process);
+			int pid = ProcessHelper.GetParentPid(process);
 			if (pid == ProcessHelper.InvalidProcessId)
 			{
 				return null;

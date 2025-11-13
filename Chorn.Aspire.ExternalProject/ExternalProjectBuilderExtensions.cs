@@ -21,60 +21,66 @@ public static class ExternalProjectBuilderExtensions
 		PropertyNamingPolicy = JsonNamingPolicy.CamelCase
 	};
 
-	/// <summary>
-	/// Adds the csproj file as an external project to the distributed application and tries to wire it up
-	/// the same way as AddProject would.
-	/// </summary>
 	/// <param name="builder">The builder to add the project to.</param>
-	/// <param name="name">The name of the external project resource.</param>
-	/// <param name="csprojPath">The path to the csproj file.</param>
-	/// <param name="configure">A callback to configure the external project resource options.</param>
-	/// <returns>The resource builder for the executable resource.</returns>
-	public static IResourceBuilder<ExecutableResource> AddExternalProject(this IDistributedApplicationBuilder builder,
-		[ResourceName] string name, string csprojPath, Action<ExternalProjectResourceOptions>? configure = null)
+	extension(IDistributedApplicationBuilder builder)
 	{
-		// Make sure we register the PidWatcher service if not already registered.
-		builder.Services.TryAddSingleton<SnapshotWatcher>();
-
-		ExternalProjectResourceOptions options = new();
-		configure?.Invoke(options);
-
-		if (!File.Exists(csprojPath))
+		/// <summary>
+		/// Adds the csproj file as an external project to the distributed application and tries to wire it up
+		/// the same way as AddProject would.
+		/// </summary>
+		/// <param name="name">The name of the external project resource.</param>
+		/// <param name="csprojPath">The path to the csproj file.</param>
+		/// <param name="configure">A callback to configure the external project resource options.</param>
+		/// <returns>The resource builder for the executable resource.</returns>
+		public IResourceBuilder<ExecutableResource> AddExternalProject([ResourceName] string name, string csprojPath, Action<ExternalProjectResourceOptions>? configure = null)
 		{
-			throw new ArgumentException($"The csproj file '{csprojPath}' was not found.", nameof(csprojPath));
-		}
+			// Make sure we register the PidWatcher service if not already registered.
+			builder.Services.TryAddSingleton<SnapshotWatcher>();
 
-		string folder = Path.GetDirectoryName(csprojPath)!;
-		// Check if the folder contains a launchSettings.json file.
-		string propertiesFolder = Path.Combine(folder, "Properties");
-		if (File.Exists(Path.Combine(propertiesFolder, "launchSettings.json")))
-		{
-			// Read the contents of the launchSettings.json file.
-			string launchSettingsJson = File.ReadAllText(Path.Combine(propertiesFolder, "launchSettings.json"));
+			ExternalProjectResourceOptions options = new();
+			configure?.Invoke(options);
 
-			// If a launchSettings.json file is found, add the project to the builder.
-			IResourceBuilder<ExecutableResource> execBuilder =
-				ExternalProjectBuilderExtensions.AddProject(builder, name, csprojPath, launchSettingsJson, options);
-			return execBuilder;
-		}
-		else
-		{
-			throw new InvalidOperationException(
-				"Properties/launchSettings.json file not found. This is required for now.");
+			if (!File.Exists(csprojPath))
+			{
+				throw new ArgumentException($"The csproj file '{csprojPath}' was not found.", nameof(csprojPath));
+			}
+
+			string folder = Path.GetDirectoryName(csprojPath)!;
+			// Check if the folder contains a launchSettings.json file.
+			string propertiesFolder = Path.Combine(folder, "Properties");
+			if (File.Exists(Path.Combine(propertiesFolder, "launchSettings.json")))
+			{
+				// Read the contents of the launchSettings.json file.
+				string launchSettingsJson = File.ReadAllText(Path.Combine(propertiesFolder, "launchSettings.json"));
+
+				// If a launchSettings.json file is found, add the project to the builder.
+				IResourceBuilder<ExecutableResource> execBuilder =
+					ExternalProjectBuilderExtensions.AddProject(builder, name, csprojPath, launchSettingsJson, options);
+				return execBuilder;
+			}
+			else
+			{
+				throw new InvalidOperationException(
+					"Properties/launchSettings.json file not found. This is required for now.");
+			}
 		}
 	}
 
-	internal static bool ShouldInjectEndpointEnvironment(this Resource r, EndpointReference e)
+	/// <param name="r">The resource.</param>
+	extension(Resource r)
 	{
-		EndpointAnnotation? endpoint = e.GetEndpointAnnotation();
-
-		if (endpoint?.UriScheme is not ("http" or "https")) // Only process http and https endpoints
-			//|| endpoint.TargetPortEnvironmentVariable is not null) // Skip if target port env variable was set
+		internal bool ShouldInjectEndpointEnvironment(EndpointReference e)
 		{
-			return false;
-		}
+			EndpointAnnotation? endpoint = e.GetEndpointAnnotation();
 
-		return true;
+			if (endpoint?.UriScheme is not ("http" or "https")) // Only process http and https endpoints
+				//|| endpoint.TargetPortEnvironmentVariable is not null) // Skip if target port env variable was set
+			{
+				return false;
+			}
+
+			return true;
+		}
 	}
 
 	private static IResourceBuilder<ExecutableResource> AddProject(IDistributedApplicationBuilder builder, string name,
@@ -328,167 +334,176 @@ public static class ExternalProjectBuilderExtensions
 		return commandResult;
 	}
 
-	private static IResourceBuilder<ExecutableResource> WithExecutableProjectDefaults(
-		this IResourceBuilder<ExecutableResource> builder, LaunchProfile launchProfile, string launchProfileName)
+	/// <param name="builder">The resource builder.</param>
+	extension(IResourceBuilder<ExecutableResource> builder)
 	{
-		// Taken mainly from the WithProjectDefaults of Aspire base.
-
-		// We only want to turn these on for .NET projects, ConfigureOtlpEnvironment works for any resource type that
-		// implements IDistributedApplicationResourceWithEnvironment.
-		builder.WithEnvironment("OTEL_DOTNET_EXPERIMENTAL_OTLP_EMIT_EXCEPTION_LOG_ATTRIBUTES", "true");
-		builder.WithEnvironment("OTEL_DOTNET_EXPERIMENTAL_OTLP_EMIT_EVENT_LOG_ATTRIBUTES", "true");
-		// .NET SDK has experimental support for retries. Enable with env var.
-		// https://github.com/open-telemetry/opentelemetry-dotnet/pull/5495
-		// Remove once retry feature in opentelemetry-dotnet is enabled by default.
-		builder.WithEnvironment("OTEL_DOTNET_EXPERIMENTAL_OTLP_RETRY", "in_memory");
-
-		// OTEL settings that are used to improve local development experience.
-		if (builder.ApplicationBuilder.ExecutionContext.IsRunMode &&
-		    builder.ApplicationBuilder.Environment.IsDevelopment())
+		private IResourceBuilder<ExecutableResource> WithExecutableProjectDefaults(LaunchProfile launchProfile, string launchProfileName)
 		{
-			// Disable URL query redaction, e.g. ?myvalue=Redacted
-			builder.WithEnvironment("OTEL_DOTNET_EXPERIMENTAL_ASPNETCORE_DISABLE_URL_QUERY_REDACTION", "true");
-			builder.WithEnvironment("OTEL_DOTNET_EXPERIMENTAL_HTTPCLIENT_DISABLE_URL_QUERY_REDACTION", "true");
-		}
+			// Taken mainly from the WithProjectDefaults of Aspire base.
 
-		builder.WithOtlpExporter();
+			// We only want to turn these on for .NET projects, ConfigureOtlpEnvironment works for any resource type that
+			// implements IDistributedApplicationResourceWithEnvironment.
+			builder.WithEnvironment("OTEL_DOTNET_EXPERIMENTAL_OTLP_EMIT_EXCEPTION_LOG_ATTRIBUTES", "true");
+			builder.WithEnvironment("OTEL_DOTNET_EXPERIMENTAL_OTLP_EMIT_EVENT_LOG_ATTRIBUTES", "true");
+			// .NET SDK has experimental support for retries. Enable with env var.
+			// https://github.com/open-telemetry/opentelemetry-dotnet/pull/5495
+			// Remove once retry feature in opentelemetry-dotnet is enabled by default.
+			builder.WithEnvironment("OTEL_DOTNET_EXPERIMENTAL_OTLP_RETRY", "in_memory");
 
-		ExecutableResource projectResource = builder.Resource;
-
-		// Get all the endpoints from the Kestrel configuration
-		IConfiguration config = ExternalProjectBuilderExtensions.GetConfiguration(projectResource);
-		IEnumerable<IConfigurationSection> kestrelEndpoints = config.GetSection("Kestrel:Endpoints").GetChildren();
-
-		// Helper to change the transport to http2 if needed
-		bool isHttp2ConfiguredInKestrelEndpointDefaults =
-			config["Kestrel:EndpointDefaults:Protocols"] == nameof(HttpProtocols.Http2);
-		var adjustTransport = (EndpointAnnotation e, string? bindingLevelProtocols = null) =>
-		{
-			if (bindingLevelProtocols != null)
+			// OTEL settings that are used to improve local development experience.
+			if (builder.ApplicationBuilder.ExecutionContext.IsRunMode &&
+			    builder.ApplicationBuilder.Environment.IsDevelopment())
 			{
-				// If the Kestrel endpoint has an explicit protocol, use that and ignore any EndpointDefaults
-				e.Transport = bindingLevelProtocols == nameof(HttpProtocols.Http2) ? "http2" : e.Transport;
-			}
-			else if (isHttp2ConfiguredInKestrelEndpointDefaults)
-			{
-				// Fall back to honoring Http2 specified at EndpointDefaults level
-				e.Transport = "http2";
-			}
-		};
-
-		if (builder.ApplicationBuilder.ExecutionContext.IsRunMode)
-		{
-			// We don't need to set ASPNETCORE_URLS if we have Kestrel endpoints configured
-			// as Kestrel will get everything it needs from the config.
-			//if (!kestrelEndpointsByScheme.Any())
-			{
-				builder.SetAspNetCoreUrls();
+				// Disable URL query redaction, e.g. ?myvalue=Redacted
+				builder.WithEnvironment("OTEL_DOTNET_EXPERIMENTAL_ASPNETCORE_DISABLE_URL_QUERY_REDACTION", "true");
+				builder.WithEnvironment("OTEL_DOTNET_EXPERIMENTAL_HTTPCLIENT_DISABLE_URL_QUERY_REDACTION", "true");
 			}
 
-			// If we had found any Kestrel endpoints, we ignore the launch profile endpoints,
-			// to match the Kestrel runtime behavior.
-			string[] urlsFromApplicationUrl =
-				launchProfile.ApplicationUrl?.Split(';', StringSplitOptions.RemoveEmptyEntries) ?? [];
-			Dictionary<string, int> endpointCountByScheme = [];
-			foreach (string url in urlsFromApplicationUrl)
+			builder.WithOtlpExporter();
+
+			ExecutableResource projectResource = builder.Resource;
+
+			// Get all the endpoints from the Kestrel configuration
+			IConfiguration config = ExternalProjectBuilderExtensions.GetConfiguration(projectResource);
+			IEnumerable<IConfigurationSection> kestrelEndpoints = config.GetSection("Kestrel:Endpoints").GetChildren();
+
+			// Helper to change the transport to http2 if needed
+			bool isHttp2ConfiguredInKestrelEndpointDefaults =
+				config["Kestrel:EndpointDefaults:Protocols"] == nameof(HttpProtocols.Http2);
+			var adjustTransport = (EndpointAnnotation e, string? bindingLevelProtocols = null) =>
 			{
-				BindingAddress bindingAddress = BindingAddress.Parse(url);
-
-				// Keep track of how many endpoints we have for each scheme
-				endpointCountByScheme.TryGetValue(bindingAddress.Scheme, out int count);
-				endpointCountByScheme[bindingAddress.Scheme] = count + 1;
-
-				// If we have multiple for the same scheme, we differentiate them by appending a number.
-				// We only do this starting with the second endpoint, so that the first stays just http/https.
-				// This allows us to keep the same behavior as "dotnet run".
-				// Also, note that we only do this in Run mode, as in Publish mode those extra endpoints
-				// with generic names would not be easily usable.
-				string endpointName = bindingAddress.Scheme;
-				if (endpointCountByScheme[bindingAddress.Scheme] > 1)
+				if (bindingLevelProtocols != null)
 				{
-					endpointName += endpointCountByScheme[bindingAddress.Scheme];
+					// If the Kestrel endpoint has an explicit protocol, use that and ignore any EndpointDefaults
+					e.Transport = bindingLevelProtocols == nameof(HttpProtocols.Http2) ? "http2" : e.Transport;
+				}
+				else if (isHttp2ConfiguredInKestrelEndpointDefaults)
+				{
+					// Fall back to honoring Http2 specified at EndpointDefaults level
+					e.Transport = "http2";
+				}
+			};
+
+			if (builder.ApplicationBuilder.ExecutionContext.IsRunMode)
+			{
+				// We don't need to set ASPNETCORE_URLS if we have Kestrel endpoints configured
+				// as Kestrel will get everything it needs from the config.
+				//if (!kestrelEndpointsByScheme.Any())
+				{
+					builder.SetAspNetCoreUrls();
 				}
 
-				builder.WithEndpoint(endpointName, e =>
+				// If we had found any Kestrel endpoints, we ignore the launch profile endpoints,
+				// to match the Kestrel runtime behavior.
+				string[] urlsFromApplicationUrl =
+					launchProfile.ApplicationUrl?.Split(';', StringSplitOptions.RemoveEmptyEntries) ?? [];
+				Dictionary<string, int> endpointCountByScheme = [];
+				foreach (string url in urlsFromApplicationUrl)
+				{
+					BindingAddress bindingAddress = BindingAddress.Parse(url);
+
+					// Keep track of how many endpoints we have for each scheme
+					endpointCountByScheme.TryGetValue(bindingAddress.Scheme, out int count);
+					endpointCountByScheme[bindingAddress.Scheme] = count + 1;
+
+					// If we have multiple for the same scheme, we differentiate them by appending a number.
+					// We only do this starting with the second endpoint, so that the first stays just http/https.
+					// This allows us to keep the same behavior as "dotnet run".
+					// Also, note that we only do this in Run mode, as in Publish mode those extra endpoints
+					// with generic names would not be easily usable.
+					string endpointName = bindingAddress.Scheme;
+					if (endpointCountByScheme[bindingAddress.Scheme] > 1)
 					{
-						e.Port = bindingAddress.Port;
-						e.TargetHost = bindingAddress.Host;
-						e.UriScheme = bindingAddress.Scheme;
-						adjustTransport(e);
-					},
-					createIfNotExists: true);
+						endpointName += endpointCountByScheme[bindingAddress.Scheme];
+					}
+
+					builder.WithEndpoint(endpointName, e =>
+						{
+							e.Port = bindingAddress.Port;
+							e.TargetHost = bindingAddress.Host;
+							e.UriScheme = bindingAddress.Scheme;
+							adjustTransport(e);
+						},
+						createIfNotExists: true);
+				}
+
+				builder.WithEnvironment(context =>
+				{
+					// Populate DOTNET_LAUNCH_PROFILE environment variable for consistency with "dotnet run" and "dotnet watch".
+					context.EnvironmentVariables.TryAdd("DOTNET_LAUNCH_PROFILE", launchProfileName);
+
+					foreach (KeyValuePair<string, string> envVar in launchProfile.EnvironmentVariables)
+					{
+						string value = Environment.ExpandEnvironmentVariables(envVar.Value);
+						context.EnvironmentVariables.TryAdd(envVar.Key, value);
+					}
+				});
 			}
 
+			return builder;
+		}
+
+		private void SetAspNetCoreUrls()
+		{
 			builder.WithEnvironment(context =>
 			{
-				// Populate DOTNET_LAUNCH_PROFILE environment variable for consistency with "dotnet run" and "dotnet watch".
-				context.EnvironmentVariables.TryAdd("DOTNET_LAUNCH_PROFILE", launchProfileName);
-
-				foreach (KeyValuePair<string, string> envVar in launchProfile.EnvironmentVariables)
+				if (context.EnvironmentVariables.ContainsKey("ASPNETCORE_URLS"))
 				{
-					string value = Environment.ExpandEnvironmentVariables(envVar.Value);
-					context.EnvironmentVariables.TryAdd(envVar.Key, value);
+					// If the user has already set ASPNETCORE_URLS, we don't want to override it.
+					return;
+				}
+
+				ReferenceExpressionBuilder aspnetCoreUrls = new();
+
+				bool processedHttpsPort = false;
+				bool first = true;
+
+				// Turn http and https endpoints into a single ASPNETCORE_URLS environment variable.
+				foreach (EndpointReference e in builder.Resource.GetEndpoints()
+					         .Where(builder.Resource.ShouldInjectEndpointEnvironment))
+				{
+					if (!first)
+					{
+						aspnetCoreUrls.AppendLiteral(";");
+					}
+
+					if (!processedHttpsPort && e.GetEndpointAnnotation()?.UriScheme == "https")
+					{
+						// Add the environment variable for the HTTPS port if we have an HTTPS service. This will make sure the
+						// HTTPS redirection middleware avoids redirecting to the internal port.
+						context.EnvironmentVariables["ASPNETCORE_HTTPS_PORT"] = e.Property(EndpointProperty.Port);
+
+						processedHttpsPort = true;
+					}
+
+					// If the endpoint is proxied, we will use localhost as the target host since DCP will be forwarding the traffic
+					string targetHost = e.GetEndpointAnnotation()?.IsProxied == true
+						? "localhost"
+						: e.GetEndpointAnnotation()?.TargetHost ?? "localhost";
+
+					aspnetCoreUrls.Append(
+						$"{e.Property(EndpointProperty.Scheme)}://{targetHost}:{e.Property(EndpointProperty.TargetPort)}");
+					first = false;
+				}
+
+				if (!aspnetCoreUrls.IsEmpty)
+				{
+					// Combine into a single expression
+					context.EnvironmentVariables["ASPNETCORE_URLS"] = aspnetCoreUrls.Build();
 				}
 			});
 		}
-
-		return builder;
 	}
 
-	private static void SetAspNetCoreUrls(this IResourceBuilder<ExecutableResource> builder)
+	/// <summary>
+	/// Extensions for EndpointReference.
+	/// </summary>
+	extension(EndpointReference e)
 	{
-		builder.WithEnvironment(context =>
-		{
-			if (context.EnvironmentVariables.ContainsKey("ASPNETCORE_URLS"))
-			{
-				// If the user has already set ASPNETCORE_URLS, we don't want to override it.
-				return;
-			}
-
-			ReferenceExpressionBuilder aspnetCoreUrls = new ReferenceExpressionBuilder();
-
-			bool processedHttpsPort = false;
-			bool first = true;
-
-			// Turn http and https endpoints into a single ASPNETCORE_URLS environment variable.
-			foreach (EndpointReference e in builder.Resource.GetEndpoints()
-				         .Where(builder.Resource.ShouldInjectEndpointEnvironment))
-			{
-				if (!first)
-				{
-					aspnetCoreUrls.AppendLiteral(";");
-				}
-
-				if (!processedHttpsPort && e.GetEndpointAnnotation().UriScheme == "https")
-				{
-					// Add the environment variable for the HTTPS port if we have an HTTPS service. This will make sure the
-					// HTTPS redirection middleware avoids redirecting to the internal port.
-					context.EnvironmentVariables["ASPNETCORE_HTTPS_PORT"] = e.Property(EndpointProperty.Port);
-
-					processedHttpsPort = true;
-				}
-
-				// If the endpoint is proxied, we will use localhost as the target host since DCP will be forwarding the traffic
-				string targetHost = e.GetEndpointAnnotation().IsProxied
-					? "localhost"
-					: e.GetEndpointAnnotation().TargetHost;
-
-				aspnetCoreUrls.Append(
-					$"{e.Property(EndpointProperty.Scheme)}://{targetHost}:{e.Property(EndpointProperty.TargetPort)}");
-				first = false;
-			}
-
-			if (!aspnetCoreUrls.IsEmpty)
-			{
-				// Combine into a single expression
-				context.EnvironmentVariables["ASPNETCORE_URLS"] = aspnetCoreUrls.Build();
-			}
-		});
+		private EndpointAnnotation? GetEndpointAnnotation() =>
+			e.Resource.Annotations.OfType<EndpointAnnotation>()
+				.SingleOrDefault(a => StringComparer.OrdinalIgnoreCase.Equals(a.Name, e.EndpointName));
 	}
-
-	private static EndpointAnnotation? GetEndpointAnnotation(this EndpointReference e) =>
-		e.Resource.Annotations.OfType<EndpointAnnotation>()
-			.SingleOrDefault(a => StringComparer.OrdinalIgnoreCase.Equals(a.Name, e.EndpointName));
 
 	private static IConfiguration GetConfiguration(ExecutableResource projectResource)
 	{

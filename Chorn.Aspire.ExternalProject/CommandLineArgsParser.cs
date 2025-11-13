@@ -12,8 +12,8 @@ internal static class CommandLineArgsParser
 	{
 		var result = new List<string>();
 		CommandLineArgsParser.ParseArgumentsIntoList(arguments, result);
-		var exe = result.First();
-		var args = result.Count > 1 ? result.Skip(1).ToArray() : [];
+		string exe = result.First();
+		string[] args = result.Count > 1 ? result.Skip(1).ToArray() : [];
 		return (exe, args);
 	}
 

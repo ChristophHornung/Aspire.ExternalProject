@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/SolutionItems/">
+    <File Path=".editorconfig" />
+    <File Path=".github/workflows/deploy.yml" />
+    <File Path=".github/workflows/dotnet.yml" />
+    <File Path=".gitignore" />
+    <File Path="Chorn.Aspire.ExternalProject.sln.DotSettings" />
+    <File Path="Directory.Build.props" />
+    <File Path="LICENSE" />
+  </Folder>
+  <Project Path="Chorn.Aspire.ExternalProject/Chorn.Aspire.ExternalProject.csproj" />
+</Solution>
