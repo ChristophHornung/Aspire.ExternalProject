@@ -42,23 +42,24 @@ public static class ExternalProjectBuilderExtensions
 			}
 
 			string folder = Path.GetDirectoryName(csprojPath)!;
-			// Check if the folder contains a launchSettings.json file.
-			string propertiesFolder = Path.Combine(folder, "Properties");
-			if (File.Exists(Path.Combine(propertiesFolder, "launchSettings.json")))
-			{
-				// Read the contents of the launchSettings.json file.
-				string launchSettingsJson = File.ReadAllText(Path.Combine(propertiesFolder, "launchSettings.json"));
+			string launchSettingsPath = Path.Combine(folder, "Properties", "launchSettings.json");
 
-				// If a launchSettings.json file is found, add the project to the builder.
-				IResourceBuilder<ExecutableResource> execBuilder =
-					ExternalProjectBuilderExtensions.AddProject(builder, name, csprojPath, launchSettingsJson, options);
-				return execBuilder;
-			}
-			else
+			// A launch profile (and therefore launchSettings.json) is required unless it is
+			// explicitly excluded via ExcludeLaunchProfile. In that case endpoints have to come
+			// from the caller (e.g. WithHttpEndpoint) or from Kestrel configuration instead.
+			string? launchSettingsJson = null;
+			if (!options.ExcludeLaunchProfile)
 			{
-				throw new InvalidOperationException(
-					"Properties/launchSettings.json file not found. This is required for now.");
+				if (!File.Exists(launchSettingsPath))
+				{
+					throw new InvalidOperationException(
+						"Properties/launchSettings.json file not found. It is required unless ExcludeLaunchProfile is set.");
+				}
+
+				launchSettingsJson = File.ReadAllText(launchSettingsPath);
 			}
+
+			return ExternalProjectBuilderExtensions.AddProject(builder, name, csprojPath, launchSettingsJson, options);
 		}
 	}
 
@@ -80,44 +81,48 @@ public static class ExternalProjectBuilderExtensions
 	}
 
 	private static IResourceBuilder<ExecutableResource> AddProject(IDistributedApplicationBuilder builder, string name,
-		string csprojFile, string launchSettingsJson, ExternalProjectResourceOptions options)
+		string csprojFile, string? launchSettingsJson, ExternalProjectResourceOptions options)
 	{
 		string projectFolder = Path.GetDirectoryName(csprojFile)!;
 		string projectFileName = Path.GetFileName(csprojFile);
 
 		// Use system.text.json to Parse the launchSettings.json file to get the launch profile. The profile is the first one with a "commandName" of "Project".
-		LaunchProfile? launchProfile;
-		string? launchProfileName;
-		List<string> launchProfileCommandLineArgs;
-		try
+		// When the launch profile is excluded there is nothing to parse and no profile is applied.
+		LaunchProfile? launchProfile = null;
+		string? launchProfileName = null;
+		List<string> launchProfileCommandLineArgs = [];
+		if (!options.ExcludeLaunchProfile && launchSettingsJson != null)
 		{
-			LaunchSettings launchSettings =
-				JsonSerializer.Deserialize<LaunchSettings>(launchSettingsJson,
-					ExternalProjectBuilderExtensions.jsonOptions)!;
-
-			KeyValuePair<string, LaunchProfile> launchProfileKeyPair =
-				launchSettings.Profiles.FirstOrDefault(f =>
-					options.LaunchProfileName != null && f.Key == options.LaunchProfileName);
-			if (launchProfileKeyPair.Value == null)
+			try
 			{
-				launchProfileKeyPair = launchSettings.Profiles.FirstOrDefault(f => f.Value.CommandName == "Project");
-			}
+				LaunchSettings launchSettings =
+					JsonSerializer.Deserialize<LaunchSettings>(launchSettingsJson,
+						ExternalProjectBuilderExtensions.jsonOptions)!;
 
-			if (launchProfileKeyPair.Key == null)
+				KeyValuePair<string, LaunchProfile> launchProfileKeyPair =
+					launchSettings.Profiles.FirstOrDefault(f =>
+						options.LaunchProfileName != null && f.Key == options.LaunchProfileName);
+				if (launchProfileKeyPair.Value == null)
+				{
+					launchProfileKeyPair = launchSettings.Profiles.FirstOrDefault(f => f.Value.CommandName == "Project");
+				}
+
+				if (launchProfileKeyPair.Key == null)
+				{
+					throw new InvalidOperationException(
+						options.LaunchProfileName != null
+							? $"No launch profile found with name '{options.LaunchProfileName}'"
+							: "No launch profile found with commandName 'Project'");
+				}
+
+				launchProfile = launchProfileKeyPair.Value;
+				launchProfileName = launchProfileKeyPair.Key;
+				launchProfileCommandLineArgs = ExternalProjectBuilderExtensions.GetLaunchProfileArgs(launchProfile);
+			}
+			catch (JsonException e)
 			{
-				throw new InvalidOperationException(
-					options.LaunchProfileName != null
-						? $"No launch profile found with name '{options.LaunchProfileName}'"
-						: "No launch profile found with commandName 'Project'");
+				throw new InvalidOperationException("Error parsing launchSettings.json", e);
 			}
-
-			launchProfile = launchProfileKeyPair.Value;
-			launchProfileName = launchProfileKeyPair.Key;
-			launchProfileCommandLineArgs = ExternalProjectBuilderExtensions.GetLaunchProfileArgs(launchProfile);
-		}
-		catch (JsonException e)
-		{
-			throw new InvalidOperationException("Error parsing launchSettings.json", e);
 		}
 
 		List<string> launchParameters = ["run", "--project", projectFileName, "--no-launch-profile"];
@@ -361,7 +366,7 @@ public static class ExternalProjectBuilderExtensions
 	/// <param name="builder">The resource builder.</param>
 	extension(IResourceBuilder<ExecutableResource> builder)
 	{
-		private IResourceBuilder<ExecutableResource> WithExecutableProjectDefaults(LaunchProfile launchProfile, string launchProfileName)
+		private IResourceBuilder<ExecutableResource> WithExecutableProjectDefaults(LaunchProfile? launchProfile, string? launchProfileName)
 		{
 			// Taken mainly from the WithProjectDefaults of Aspire base.
 
@@ -415,6 +420,14 @@ public static class ExternalProjectBuilderExtensions
 				//if (!kestrelEndpointsByScheme.Any())
 				{
 					builder.SetAspNetCoreUrls();
+				}
+
+				// Without a launch profile there is nothing more to apply here. ASPNETCORE_URLS is
+				// still synthesized above from whatever endpoints the caller (e.g. WithHttpEndpoint)
+				// or Kestrel configuration provide.
+				if (launchProfile is null || launchProfileName is null)
+				{
+					return builder;
 				}
 
 				// If we had found any Kestrel endpoints, we ignore the launch profile endpoints,

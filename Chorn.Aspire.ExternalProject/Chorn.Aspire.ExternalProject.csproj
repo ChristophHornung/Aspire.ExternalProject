@@ -17,6 +17,7 @@
 		<PackageReleaseNotes>
 			v.1.6.0
 			- Updated to target .NET 10
+			- Honor ExcludeLaunchProfile: skip the launch profile and make launchSettings.json optional when set
 			v.1.5.0
 			- Updated to latest Aspire 13
 			v.1.4.0

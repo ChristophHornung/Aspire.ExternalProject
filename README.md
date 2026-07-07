@@ -49,8 +49,18 @@ builder.AddExternalProject("resourcename", "path/to/external/project.csproj", op
 });
 ```
 
+By default a `Properties/launchSettings.json` with a launch profile is required, and its endpoints and
+environment variables are applied to the resource. If your external project has no (usable) launch profile,
+set `ExcludeLaunchProfile` to skip it entirely. `launchSettings.json` is then no longer required and you
+declare the endpoints yourself (or rely on Kestrel configuration).
+```csharp
+builder.AddExternalProject("resourcename", "path/to/external/project.csproj", options => {
+	options.ExcludeLaunchProfile = true;
+}).WithHttpEndpoint();
+```
+
 ## Limitations and Known Issues
-* Currently the `ExcludeLaunchProfile` and `ExcludeKestrelEndpoint` properties on the resource options are ignored.
+* Currently the `ExcludeKestrelEndpoints` property on the resource options is ignored.
 * Publish operations probably won't work as expected.
 * Starting the debugger via the default 'Debug' command in the dashboard might not attach correctly via vsjitdebugger.
 * The most reliable and quick was to debug is to open a VS solution and simply use the "Debug->Reattach to Process" option.
@@ -71,6 +81,6 @@ We bascially replicate the work done in the `AddProject` method, but with a few 
 Starting the debugger is done by starting the `vsjitdebugger` process with the pid of the external project.
 
 ## Future Work
-* Add support for the `ExcludeLaunchProfile` and `ExcludeKestrelEndpoint` properties.
+* Add support for the `ExcludeKestrelEndpoints` property.
 * Replicate the publish functionality if possible.
 * Maybe switch to a custom resource type to make the external project more visible in the dashboard.
