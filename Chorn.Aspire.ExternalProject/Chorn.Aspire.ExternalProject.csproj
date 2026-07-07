@@ -17,7 +17,9 @@
 		<PackageReleaseNotes>
 			v.1.6.0
 			- Updated to target .NET 10
+			- Raised minimum Aspire to 13.4
 			- Honor ExcludeLaunchProfile: skip the launch profile and make launchSettings.json optional when set
+			- Show the 'Git Pull' output in the dashboard via the command result
 			v.1.5.0
 			- Updated to latest Aspire 13
 			v.1.4.0
@@ -39,7 +41,7 @@
 		<AssemblyOriginatorKeyFile>..\signingkey.snk</AssemblyOriginatorKeyFile>
 	</PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="Aspire.Hosting.AppHost" Version="[13.0.0, 14.0.0)" />
+		<PackageReference Include="Aspire.Hosting.AppHost" Version="[13.4.0, 14.0.0)" />
 	</ItemGroup>
 	<ItemGroup>
 		<None Include="..\README.md" Pack="true" PackagePath="\" />

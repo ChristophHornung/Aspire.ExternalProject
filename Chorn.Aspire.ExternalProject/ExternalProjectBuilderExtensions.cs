@@ -226,7 +226,7 @@ public static class ExternalProjectBuilderExtensions
 		int? pid = ExternalProjectBuilderExtensions.GetPid(arg.ServiceProvider, resourceName);
 		if (pid == null)
 		{
-			return new ExecuteCommandResult() { Success = false, ErrorMessage = "No pid found" };
+			return new ExecuteCommandResult() { Success = false, Message = "No pid found" };
 		}
 
 		try
@@ -238,7 +238,7 @@ public static class ExternalProjectBuilderExtensions
 			if (child == null)
 			{
 				return new ExecuteCommandResult()
-					{ Success = false, ErrorMessage = "No child process found for dotnet.exe" };
+					{ Success = false, Message = "No child process found for dotnet.exe" };
 			}
 
 			// Attach the debugger via vsjitdebugger
@@ -259,7 +259,7 @@ public static class ExternalProjectBuilderExtensions
 		}
 		catch (Exception e)
 		{
-			return new ExecuteCommandResult() { Success = false, ErrorMessage = e.Message };
+			return new ExecuteCommandResult() { Success = false, Message = e.Message };
 		}
 	}
 
@@ -270,7 +270,7 @@ public static class ExternalProjectBuilderExtensions
 		string? baseUrl = ExternalProjectBuilderExtensions.GetHttpsOrHttpBaseUrl(arg.ServiceProvider, resourceName);
 		if (baseUrl == null)
 		{
-			return new ExecuteCommandResult() { Success = false, ErrorMessage = "No base url found" };
+			return new ExecuteCommandResult() { Success = false, Message = "No base url found" };
 		}
 
 		string url = $"{baseUrl}{launchDebuggerUri}";
@@ -287,14 +287,14 @@ public static class ExternalProjectBuilderExtensions
 
 			if (!result.IsSuccessStatusCode)
 			{
-				return new ExecuteCommandResult() { Success = false, ErrorMessage = result.ReasonPhrase };
+				return new ExecuteCommandResult() { Success = false, Message = result.ReasonPhrase };
 			}
 
 			return new ExecuteCommandResult() { Success = true };
 		}
 		catch (Exception e)
 		{
-			return new ExecuteCommandResult() { Success = false, ErrorMessage = e.Message };
+			return new ExecuteCommandResult() { Success = false, Message = e.Message };
 		}
 	}
 
@@ -354,13 +354,26 @@ public static class ExternalProjectBuilderExtensions
 		string output = await process.StandardOutput.ReadToEndAsync();
 		string error = await process.StandardError.ReadToEndAsync();
 
-		ExecuteCommandResult commandResult = new ExecuteCommandResult
-		{
-			Success = process.ExitCode == 0,
-			ErrorMessage = error
-		};
+		bool success = process.ExitCode == 0;
 
-		return commandResult;
+		// Surface the git output in the dashboard: a short message plus the full text
+		// (stdout on success, stderr on failure) as structured command result data.
+		string trimmedOutput = output.Trim();
+		string trimmedError = error.Trim();
+		string message = success
+			? (trimmedOutput.Length > 0 ? trimmedOutput : "git pull completed.")
+			: (trimmedError.Length > 0 ? trimmedError : "git pull failed.");
+
+		return new ExecuteCommandResult
+		{
+			Success = success,
+			Message = message,
+			Data = new CommandResultData
+			{
+				Value = success ? output : (trimmedError.Length > 0 ? error : output),
+				Format = CommandResultFormat.Text
+			}
+		};
 	}
 
 	/// <param name="builder">The resource builder.</param>
