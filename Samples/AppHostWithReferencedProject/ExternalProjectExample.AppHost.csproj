@@ -11,10 +11,6 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Aspire.Hosting.AppHost" Version="13.4.0" />
-	</ItemGroup>
-
-	<ItemGroup>
 		<ProjectReference Include="..\..\Chorn.Aspire.ExternalProject\Chorn.Aspire.ExternalProject.csproj"
 											IsAspireProjectResource="false" />
 	</ItemGroup>
