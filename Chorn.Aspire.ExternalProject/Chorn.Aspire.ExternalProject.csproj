@@ -6,7 +6,7 @@
 		<IsPackable>true</IsPackable>
 		<Authors>Christoph Hornung</Authors>
 		<PackageId>Chorn.Aspire.ExternalProject</PackageId>
-		<Version>1.6.0</Version>
+		<Version>1.7.0</Version>
 		<Copyright>Christoph Hornung</Copyright>
 		<Description>Adds the ability to add projects in other solutions to the Aspire AppHost.</Description>
 		<PackageProjectUrl>https://github.com/ChristophHornung/Aspire.ExternalProject</PackageProjectUrl>
@@ -15,12 +15,12 @@
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
 		<PackageReleaseNotes>
+			v.1.7.0
+			- Raised minimum Aspire to 13.4
+			- Honor ExcludeLaunchProfile to make launchSettings.json optional
+			- Show the 'Git Pull' output in the dashboard
 			v.1.6.0
 			- Updated to target .NET 10
-			- Raised minimum Aspire to 13.4
-			- Honor ExcludeLaunchProfile: skip the launch profile and make launchSettings.json optional when set
-			- Show the 'Git Pull' output in the dashboard via the command result
-			- Confirm before 'Git Pull' and restrict the 'Debug' command to the dashboard UI
 			v.1.5.0
 			- Updated to latest Aspire 13
 			v.1.4.0
