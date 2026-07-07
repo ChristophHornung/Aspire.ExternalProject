@@ -24,7 +24,7 @@ To run the sample end-to-end, launch the AppHost in `Samples/AppHostWithReferenc
 
 ## CI/CD
 
-- `.github/workflows/dotnet.yml` — build + package on push/PR to `main` (uses .NET 9 SDK).
+- `.github/workflows/dotnet.yml` — build + package on push/PR to `main` (uses .NET 10 SDK).
 - `.github/workflows/deploy.yml` — manual (`workflow_dispatch`) publish of the `.nupkg` to NuGet using the `NUGET_API_KEY` secret.
 - Releasing: bump `<Version>` and update `<PackageReleaseNotes>` in `Chorn.Aspire.ExternalProject/Chorn.Aspire.ExternalProject.csproj`, then run the Deployment workflow.
 
@@ -33,7 +33,7 @@ To run the sample end-to-end, launch the AppHost in `Samples/AppHostWithReferenc
 The whole library is in `Chorn.Aspire.ExternalProject/`. Key flow, entered from `ExternalProjectBuilderExtensions.AddExternalProject`:
 
 1. **Launch as an executable, not a project.** Aspire cannot add a project it can't reference at compile time, so the external project is added via `builder.AddExecutable(name, "dotnet", folder, ["run", "--project", <csproj>, "--no-launch-profile", ...])`. `dotnet run` handles build+run.
-2. **launchSettings.json is required.** `Properties/launchSettings.json` next to the csproj is read and parsed manually (System.Text.Json, camelCase). The first profile with `commandName == "Project"` is used unless `LaunchProfileName` is set. Its `commandLineArgs`, `applicationUrl`, and `environmentVariables` are replayed onto the executable resource. If the file is missing, `AddExternalProject` throws.
+2. **launchSettings.json is required (unless `ExcludeLaunchProfile` is set).** `Properties/launchSettings.json` next to the csproj is read and parsed manually (System.Text.Json, camelCase). The first profile with `commandName == "Project"` is used unless `LaunchProfileName` is set. Its `commandLineArgs`, `applicationUrl`, and `environmentVariables` are replayed onto the executable resource. If the file is missing, `AddExternalProject` throws — except when `ExcludeLaunchProfile` is set, in which case profile parsing is skipped entirely and endpoints/env must come from the caller (`WithHttpEndpoint`/`WithHttpsEndpoint`) or Kestrel config.
 3. **`WithExecutableProjectDefaults`** is a hand-ported copy of Aspire's internal `WithProjectDefaults`: it sets the OTLP/OpenTelemetry env vars, calls `WithOtlpExporter()`, reads the external project's `appsettings.json` / `appsettings.{env}.json` to discover Kestrel endpoints, materializes endpoints from the launch profile's `applicationUrl`, and builds `ASPNETCORE_URLS`. **This mirrors Aspire internals** — when bumping the Aspire dependency, re-check this method against the upstream `WithProjectDefaults`.
 4. **Dashboard commands** are added via `WithCommand`:
    - `Debug` — attaches a debugger to the running external process (see below).
