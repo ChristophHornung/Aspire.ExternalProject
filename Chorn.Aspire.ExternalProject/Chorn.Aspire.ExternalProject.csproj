@@ -16,7 +16,7 @@
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
 		<PackageReleaseNotes>
 			v.1.7.0
-			- Show the launch profile's launchUrl (e.g. OpenAPI) as a dashboard URL, matching AddProject (#2)
+			- Show the launch profile's launchUrl in the dashboard
 			v.1.6.0
 			- Updated to target .NET 10
 			- Raised minimum Aspire to 13.4
