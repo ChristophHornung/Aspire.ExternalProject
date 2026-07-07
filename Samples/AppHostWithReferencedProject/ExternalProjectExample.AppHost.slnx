@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="../../Chorn.Aspire.ExternalProject/Chorn.Aspire.ExternalProject.csproj" />
+  <Project Path="ExternalProjectExample.AppHost.csproj" />
+</Solution>

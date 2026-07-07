@@ -12,10 +12,10 @@ The public surface is one extension method: `builder.AddExternalProject(name, cs
 
 ```powershell
 # Build the library (Release produces the NuGet package — GeneratePackageOnBuild is on)
-dotnet build Chorn.Aspire.ExternalProject.sln --configuration Release
+dotnet build Chorn.Aspire.ExternalProject.slnx --configuration Release
 
 # Restore
-dotnet restore Chorn.Aspire.ExternalProject.sln
+dotnet restore Chorn.Aspire.ExternalProject.slnx
 ```
 
 There is **no test project** in this repository. The CI `dotnet test` step uses `--filter FullyQualifiedName!~Example` purely to exclude sample/example projects; it does not run real tests. Do not assume a test harness exists — if you add tests, add a test project and wire it into the solution.
@@ -59,7 +59,8 @@ Commands can't get the current resource snapshot at execution time, so `Snapshot
 ## Conventions
 
 - `Directory.Build.props` applies repo-wide: `LangVersion=preview`, `Nullable=enable`, `ImplicitUsings=true`, deterministic builds.
-- The library targets **net8.0**; the samples target **net9.0**.
+- Everything targets **net10.0** (library and samples).
+- Solutions use the XML-based **`.slnx`** format (no legacy `.sln` files).
 - `.editorconfig` and the `.DotSettings` (ReSharper) drive style. Notable: `using` directives go **inside** the namespace, file-scoped namespaces, and `this.` qualification on member access — match the existing files.
 - The assembly is strong-name signed with `signingkey.snk`.
 - Commit messages follow the [gitmoji](https://gitmoji.dev) convention — prefix the message with the relevant emoji (e.g. `⬆️ Updated examples to aspire 9.3.1`, `🐛 Fixed ...`, `♻️ Refactored ...`).
