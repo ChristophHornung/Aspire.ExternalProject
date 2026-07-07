@@ -4,7 +4,7 @@
     <File Path=".github/workflows/deploy.yml" />
     <File Path=".github/workflows/dotnet.yml" />
     <File Path=".gitignore" />
-    <File Path="Chorn.Aspire.ExternalProject.sln.DotSettings" />
+    <File Path="Chorn.Aspire.ExternalProject.slnx.DotSettings" />
     <File Path="Directory.Build.props" />
     <File Path="LICENSE" />
   </Folder>
