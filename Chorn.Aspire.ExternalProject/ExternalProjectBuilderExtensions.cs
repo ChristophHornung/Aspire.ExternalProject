@@ -493,6 +493,28 @@ public static class ExternalProjectBuilderExtensions
 						context.EnvironmentVariables.TryAdd(envVar.Key, value);
 					}
 				});
+
+				// Mimic Aspire's launch-profile launchUrl handling so the dashboard shows the launch
+				// URL (e.g. an OpenAPI endpoint) for the external project, the same way AddProject does.
+				// Aspire moved this from a ProjectResource-only snapshot check to a WithUrls annotation
+				// that works for any resource with endpoints (see GitHub issue #2).
+				if (!string.IsNullOrWhiteSpace(launchProfile.LaunchUrl) &&
+				    Uri.TryCreate(launchProfile.LaunchUrl, UriKind.RelativeOrAbsolute, out Uri? parsedLaunchUri))
+				{
+					string launchUrl = launchProfile.LaunchUrl;
+					Uri launchUri = parsedLaunchUri;
+					builder.WithUrls(context =>
+					{
+						// Combine the launch URL with each launch-profile endpoint URL, matching Aspire:
+						// absolute launchUrl replaces the endpoint URL, relative is appended to it.
+						foreach (ResourceUrlAnnotation url in context.Urls.Where(u => u.Endpoint is not null))
+						{
+							url.Url = launchUri.IsAbsoluteUri
+								? launchUrl
+								: new Uri(new Uri(url.Url), launchUri).ToString();
+						}
+					});
+				}
 			}
 
 			return builder;
