@@ -136,7 +136,10 @@ public static class ExternalProjectBuilderExtensions
 				ctx => ExternalProjectBuilderExtensions.AttachDebugger(ctx, name, options), new CommandOptions
 				{
 					UpdateState = ExternalProjectBuilderExtensions.DebugStateChange,
-					IconName = "Bug"
+					IconName = "Bug",
+					// Attaching a debugger is an interactive, local action, so keep it out of
+					// automation/MCP clients and only expose it in the dashboard.
+					Visibility = ResourceCommandVisibility.UI
 				});
 
 		if (!options.SkipGitSupport)
@@ -148,8 +151,10 @@ public static class ExternalProjectBuilderExtensions
 					ctx => ExternalProjectBuilderExtensions.GitUpdate(ctx, projectFolder),
 					new CommandOptions
 					{
-						UpdateState = ExternalProjectBuilderExtensions.GitUpdateStateChange, 
-						IconName = "BranchRequest"
+						UpdateState = ExternalProjectBuilderExtensions.GitUpdateStateChange,
+						IconName = "BranchRequest",
+						// git pull mutates the external project's working tree, so confirm first.
+						ConfirmationMessage = $"Pull the latest changes for '{name}' from git?"
 					});
 			if (options.EnableGitHealthCheck)
 			{

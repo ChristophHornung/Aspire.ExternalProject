@@ -20,6 +20,7 @@
 			- Raised minimum Aspire to 13.4
 			- Honor ExcludeLaunchProfile: skip the launch profile and make launchSettings.json optional when set
 			- Show the 'Git Pull' output in the dashboard via the command result
+			- Confirm before 'Git Pull' and restrict the 'Debug' command to the dashboard UI
 			v.1.5.0
 			- Updated to latest Aspire 13
 			v.1.4.0
