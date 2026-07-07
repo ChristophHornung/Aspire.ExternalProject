@@ -8,6 +8,10 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    permissions:
+      id-token: write   # required for NuGet trusted publishing (OIDC token exchange)
+      contents: read    # for actions/checkout
+
     steps:
     - uses: actions/checkout@v7
     - name: Setup .NET
@@ -25,5 +29,10 @@ jobs:
       with:
         name: nuget-package
         path: ${{ github.workspace }}/Chorn.Aspire.ExternalProject/bin/Release/*.nupkg
+    - name: NuGet login (OIDC -> temporary API key)
+      uses: NuGet/login@v1
+      id: login
+      with:
+        user: ${{ secrets.NUGET_USER }}
     - name: Push to NuGet
-      run: dotnet nuget push ${{ github.workspace }}/Chorn.Aspire.ExternalProject/bin/Release/*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.NUGET_API_KEY }}
+      run: dotnet nuget push ${{ github.workspace }}/Chorn.Aspire.ExternalProject/bin/Release/*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
