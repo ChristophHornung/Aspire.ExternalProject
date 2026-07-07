@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 
@@ -34,9 +33,6 @@ public static class ExternalProjectBuilderExtensions
 		/// <returns>The resource builder for the executable resource.</returns>
 		public IResourceBuilder<ExecutableResource> AddExternalProject([ResourceName] string name, string csprojPath, Action<ExternalProjectResourceOptions>? configure = null)
 		{
-			// Make sure we register the PidWatcher service if not already registered.
-			builder.Services.TryAddSingleton<SnapshotWatcher>();
-
 			ExternalProjectResourceOptions options = new();
 			configure?.Invoke(options);
 
@@ -134,7 +130,7 @@ public static class ExternalProjectBuilderExtensions
 			.WithCommand("Debug", "Debug",
 				ctx => ExternalProjectBuilderExtensions.AttachDebugger(ctx, name, options), new CommandOptions
 				{
-					UpdateState = ctx => ExternalProjectBuilderExtensions.DebugStateChange(ctx, name),
+					UpdateState = ExternalProjectBuilderExtensions.DebugStateChange,
 					IconName = "Bug"
 				});
 
@@ -193,12 +189,8 @@ public static class ExternalProjectBuilderExtensions
 		return args;
 	}
 
-	private static ResourceCommandState DebugStateChange(UpdateCommandStateContext arg, string name)
+	private static ResourceCommandState DebugStateChange(UpdateCommandStateContext arg)
 	{
-		// We seem to be unable to get the current resource snapshot when executing the command, so we need to store the pid when the resource state changes.
-		SnapshotWatcher snapshotWatcher = arg.ServiceProvider.GetRequiredService<SnapshotWatcher>();
-		snapshotWatcher.Store(name, arg.ResourceSnapshot);
-
 		return arg.ResourceSnapshot.State?.Text == "Running"
 			? ResourceCommandState.Enabled
 			: ResourceCommandState.Hidden;
@@ -214,23 +206,19 @@ public static class ExternalProjectBuilderExtensions
 	private static async Task<ExecuteCommandResult> AttachDebugger(ExecuteCommandContext arg, string resourceName,
 		ExternalProjectResourceOptions externalProjectOptions)
 	{
-		SnapshotWatcher snapshotWatcher = arg.ServiceProvider.GetRequiredService<SnapshotWatcher>();
-
 		if (externalProjectOptions.LaunchDebuggerUri != null)
 		{
 			return await ExternalProjectBuilderExtensions.AttachDebuggerViaUrl(arg, resourceName,
-				externalProjectOptions.LaunchDebuggerUri,
-				snapshotWatcher);
+				externalProjectOptions.LaunchDebuggerUri);
 		}
 
-		return ExternalProjectBuilderExtensions.AttachDebuggerViaVsjit(resourceName, snapshotWatcher,
-			externalProjectOptions);
+		return ExternalProjectBuilderExtensions.AttachDebuggerViaVsjit(arg, resourceName, externalProjectOptions);
 	}
 
-	private static ExecuteCommandResult AttachDebuggerViaVsjit(string resourceName, SnapshotWatcher snapshotWatcher,
+	private static ExecuteCommandResult AttachDebuggerViaVsjit(ExecuteCommandContext arg, string resourceName,
 		ExternalProjectResourceOptions externalProjectOptions)
 	{
-		int? pid = snapshotWatcher.GetPid(resourceName);
+		int? pid = ExternalProjectBuilderExtensions.GetPid(arg.ServiceProvider, resourceName);
 		if (pid == null)
 		{
 			return new ExecuteCommandResult() { Success = false, ErrorMessage = "No pid found" };
@@ -271,10 +259,10 @@ public static class ExternalProjectBuilderExtensions
 	}
 
 	private static async Task<ExecuteCommandResult> AttachDebuggerViaUrl(ExecuteCommandContext arg, string resourceName,
-		string launchDebuggerUri, SnapshotWatcher snapshotWatcher)
+		string launchDebuggerUri)
 	{
 		// If the launch debugger uri is set we call that instead of trying to attach the debugger via vsjitdebugger.
-		string? baseUrl = snapshotWatcher.GetHttpsOrHttpBaseUrl(resourceName);
+		string? baseUrl = ExternalProjectBuilderExtensions.GetHttpsOrHttpBaseUrl(arg.ServiceProvider, resourceName);
 		if (baseUrl == null)
 		{
 			return new ExecuteCommandResult() { Success = false, ErrorMessage = "No base url found" };
@@ -303,6 +291,42 @@ public static class ExternalProjectBuilderExtensions
 		{
 			return new ExecuteCommandResult() { Success = false, ErrorMessage = e.Message };
 		}
+	}
+
+	private static int? GetPid(IServiceProvider serviceProvider, string resourceName)
+	{
+		ResourceNotificationService notificationService =
+			serviceProvider.GetRequiredService<ResourceNotificationService>();
+
+		if (notificationService.TryGetCurrentState(resourceName, out ResourceEvent? resourceEvent))
+		{
+			ResourcePropertySnapshot? pidProperty =
+				resourceEvent.Snapshot.Properties.FirstOrDefault(p => p.Name == "executable.pid");
+			if (pidProperty != null && pidProperty.Value is int pid && pid != 0)
+			{
+				return pid;
+			}
+		}
+
+		return null;
+	}
+
+	private static string? GetHttpsOrHttpBaseUrl(IServiceProvider serviceProvider, string resourceName)
+	{
+		ResourceNotificationService notificationService =
+			serviceProvider.GetRequiredService<ResourceNotificationService>();
+
+		if (notificationService.TryGetCurrentState(resourceName, out ResourceEvent? resourceEvent))
+		{
+			UrlSnapshot? baseUrl =
+				resourceEvent.Snapshot.Urls.FirstOrDefault(p => p.Name == "https target port") ??
+				resourceEvent.Snapshot.Urls.FirstOrDefault(p => p.Name == "https") ??
+				resourceEvent.Snapshot.Urls.FirstOrDefault(p => p.Name == "http target port") ??
+				resourceEvent.Snapshot.Urls.FirstOrDefault(p => p.Name == "http");
+			return baseUrl?.Url;
+		}
+
+		return null;
 	}
 
 	private static async Task<ExecuteCommandResult> GitUpdate(ExecuteCommandContext arg, string projectFolder)

@@ -46,9 +46,11 @@ Two strategies in `AttachDebugger`:
 - **vsjitdebugger (default):** `dotnet run` spawns a child process; the actual app is the first non-`dotnet` child of the tracked PID. `ProcessHelper` walks parent PIDs via `NtQueryInformationProcess` (Windows P/Invoke; the `#if UNIX` branch is a stub) to find it, then starts `LaunchDebuggerCommand` (`vsjitdebugger`, args `-p <pid>`). This is unreliable — see README "Limitations".
 - **URL-based:** if `LaunchDebuggerUri` is set, POSTs to `{baseUrl}{LaunchDebuggerUri}` instead. The external project is expected to expose an endpoint that calls `Debugger.Launch()` (see `Samples/External/WeatherApi/Program.cs` `/debug`). More reliable.
 
-### PID/URL tracking — `SnapshotWatcher`
+### PID/URL lookup
 
-Commands can't get the current resource snapshot at execution time, so `SnapshotWatcher` (registered as a singleton) caches the latest `CustomResourceSnapshot` per resource name. It's populated from the `Debug` command's `UpdateState` callback (`DebugStateChange`), and exposes `GetPid` (reads the `executable.pid` property) and `GetHttpsOrHttpBaseUrl` (picks the best http/https URL). If you touch how PIDs or base URLs are obtained, this is the choke point.
+To attach the debugger, the `Debug` command needs the resource's live PID (and, for the URL strategy, its base URL). These are read on demand from Aspire's `ResourceNotificationService.TryGetCurrentState(resourceName, out ResourceEvent)`, whose `Snapshot` exposes the `executable.pid` property and the resource URLs. The `GetPid` / `GetHttpsOrHttpBaseUrl` helpers in `ExternalProjectBuilderExtensions` wrap this — that's the choke point if you change how PIDs or base URLs are obtained.
+
+> Historically this required a background `SnapshotWatcher` singleton that cached the snapshot from the command's `UpdateState` callback, because command execution couldn't read live state. `TryGetCurrentState` (public since Aspire 9.5) removed that need, so `SnapshotWatcher` is gone.
 
 ### Other files
 
