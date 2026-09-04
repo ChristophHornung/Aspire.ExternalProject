@@ -155,7 +155,7 @@ public static class ExternalProjectBuilderExtensions
 					ctx => ExternalProjectBuilderExtensions.GitUpdate(ctx, projectFolder),
 					new CommandOptions
 					{
-						UpdateState = ExternalProjectBuilderExtensions.GitUpdateStateChange,
+						UpdateState = ctx => ExternalProjectBuilderExtensions.GitUpdateStateChange(ctx, options.UseWatch),
 						IconName = "BranchRequest",
 						// git pull mutates the external project's working tree, so confirm first.
 						ConfirmationMessage = $"Pull the latest changes for '{name}' from git?"
@@ -210,8 +210,16 @@ public static class ExternalProjectBuilderExtensions
 			: ResourceCommandState.Hidden;
 	}
 
-	private static ResourceCommandState GitUpdateStateChange(UpdateCommandStateContext arg)
+	private static ResourceCommandState GitUpdateStateChange(UpdateCommandStateContext arg, bool useWatch)
 	{
+		// Under 'dotnet watch' a pull is picked up while the app runs (recompile/hot reload), so allow
+		// it in any state. Otherwise only allow it when not running, since a plain 'dotnet run' would
+		// need a restart to pick up the changes.
+		if (useWatch)
+		{
+			return ResourceCommandState.Enabled;
+		}
+
 		return arg.ResourceSnapshot.State?.Text != "Running"
 			? ResourceCommandState.Enabled
 			: ResourceCommandState.Disabled;
@@ -232,7 +240,7 @@ public static class ExternalProjectBuilderExtensions
 	private static ExecuteCommandResult AttachDebuggerViaVsjit(ExecuteCommandContext arg, string resourceName,
 		ExternalProjectResourceOptions externalProjectOptions)
 	{
-		int? pid = ExternalProjectBuilderExtensions.GetPid(arg.ServiceProvider, resourceName);
+		int? pid = ExternalProjectBuilderExtensions.GetPid(arg.Services, resourceName);
 		if (pid == null)
 		{
 			return new ExecuteCommandResult() { Success = false, Message = "No pid found" };
@@ -240,11 +248,13 @@ public static class ExternalProjectBuilderExtensions
 
 		try
 		{
-			// The pid is the pid of dotnet.exe, we need to attach the debugger to the first child process that is not a dotnet process.
-			Process? child = Process.GetProcesses()
-				.FirstOrDefault(p => p.ProcessName != "dotnet" && p.GetParent()?.Id == pid);
+			// The tracked pid is a dotnet process ('dotnet run', or 'dotnet watch' when UseWatch is set).
+			// The actual app is a descendant that is not a dotnet process: a direct child for 'dotnet run',
+			// but several levels down for 'dotnet watch' (watch -> dotnet-watch -> delta applier -> app).
+			// So we search for the nearest non-dotnet descendant, not just a direct child.
+			int? childPid = ExternalProjectBuilderExtensions.FindDescendantAppProcess(pid.Value);
 
-			if (child == null)
+			if (childPid == null)
 			{
 				return new ExecuteCommandResult()
 					{ Success = false, Message = "No child process found for dotnet.exe" };
@@ -254,7 +264,7 @@ public static class ExternalProjectBuilderExtensions
 			ProcessStartInfo startInfo = new ProcessStartInfo
 			{
 				FileName = externalProjectOptions.LaunchDebuggerCommand,
-				Arguments = externalProjectOptions.LaunchDebuggerCommandArguments.Replace("<pid>", child.Id.ToString()),
+				Arguments = externalProjectOptions.LaunchDebuggerCommandArguments.Replace("<pid>", childPid.Value.ToString()),
 				UseShellExecute = false,
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
@@ -272,11 +282,62 @@ public static class ExternalProjectBuilderExtensions
 		}
 	}
 
+	/// <summary>
+	/// Finds the process id of the nearest descendant of <paramref name="trackedPid"/> that is not a
+	/// dotnet process, i.e. the actual application process behind 'dotnet run' or 'dotnet watch'.
+	/// </summary>
+	private static int? FindDescendantAppProcess(int trackedPid)
+	{
+		Process[] all = Process.GetProcesses();
+		try
+		{
+			// Build a parent-pid -> children lookup (one parent query per process).
+			ILookup<int, Process> childrenByParent = all.ToLookup(p => p.GetParent()?.Id ?? -1);
+
+			// Breadth-first from the tracked process so we return the shallowest non-dotnet descendant.
+			Queue<int> queue = new();
+			queue.Enqueue(trackedPid);
+			HashSet<int> seen = [trackedPid];
+			while (queue.Count > 0)
+			{
+				int parentId = queue.Dequeue();
+				foreach (Process candidate in childrenByParent[parentId])
+				{
+					// Skip the Windows console host helper; it is a non-dotnet descendant but never the app.
+					if (string.Equals(candidate.ProcessName, "conhost", StringComparison.OrdinalIgnoreCase))
+					{
+						continue;
+					}
+
+					if (!string.Equals(candidate.ProcessName, "dotnet", StringComparison.OrdinalIgnoreCase))
+					{
+						return candidate.Id;
+					}
+
+					if (seen.Add(candidate.Id))
+					{
+						queue.Enqueue(candidate.Id);
+					}
+				}
+			}
+
+			return null;
+		}
+		finally
+		{
+			// Release the native handles opened by Process.GetProcesses().
+			foreach (Process p in all)
+			{
+				p.Dispose();
+			}
+		}
+	}
+
 	private static async Task<ExecuteCommandResult> AttachDebuggerViaUrl(ExecuteCommandContext arg, string resourceName,
 		string launchDebuggerUri)
 	{
 		// If the launch debugger uri is set we call that instead of trying to attach the debugger via vsjitdebugger.
-		string? baseUrl = ExternalProjectBuilderExtensions.GetHttpsOrHttpBaseUrl(arg.ServiceProvider, resourceName);
+		string? baseUrl = ExternalProjectBuilderExtensions.GetHttpsOrHttpBaseUrl(arg.Services, resourceName);
 		if (baseUrl == null)
 		{
 			return new ExecuteCommandResult() { Success = false, Message = "No base url found" };

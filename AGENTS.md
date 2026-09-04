@@ -43,7 +43,7 @@ The whole library is in `Chorn.Aspire.ExternalProject/`. Key flow, entered from 
 ### Debugger attach (Windows-centric)
 
 Two strategies in `AttachDebugger`:
-- **vsjitdebugger (default):** `dotnet run` spawns a child process; the actual app is the first non-`dotnet` child of the tracked PID. `ProcessHelper` walks parent PIDs via `NtQueryInformationProcess` (Windows P/Invoke; the `#if UNIX` branch is a stub) to find it, then starts `LaunchDebuggerCommand` (`vsjitdebugger`, args `-p <pid>`). This is unreliable — see README "Limitations".
+- **vsjitdebugger (default):** the tracked PID is a dotnet process (`dotnet run`, or `dotnet watch` when `UseWatch` is set); the actual app is the nearest non-`dotnet` **descendant** — a direct child under `dotnet run`, but several levels down under `dotnet watch`. `FindDescendantAppProcess` builds a parent→children map (via `ProcessHelper.GetParent`, which uses `NtQueryInformationProcess`; the `#if UNIX` branch is a stub) and BFS's from the tracked PID to that descendant, then starts `LaunchDebuggerCommand` (`vsjitdebugger`, args `-p <pid>`). This is unreliable — see README "Limitations".
 - **URL-based:** if `LaunchDebuggerUri` is set, POSTs to `{baseUrl}{LaunchDebuggerUri}` instead. The external project is expected to expose an endpoint that calls `Debugger.Launch()` (see `Samples/External/WeatherApi/Program.cs` `/debug`). More reliable.
 
 ### PID/URL lookup

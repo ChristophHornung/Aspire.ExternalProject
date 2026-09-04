@@ -17,6 +17,7 @@
 		<PackageReleaseNotes>
 			v.1.8.0
 			- Added UseWatch option to run the external project with 'dotnet watch' (recompile/hot reload on change)
+			- Debug and Git Pull now work while an external project runs under watch
 			- Raised minimum Aspire to 13.5
 			v.1.7.0
 			- Show the launch profile's launchUrl in the dashboard
