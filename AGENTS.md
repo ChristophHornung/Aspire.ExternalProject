@@ -65,5 +65,6 @@ To attach the debugger, the `Debug` command needs the resource's live PID (and, 
 - Solutions use the XML-based **`.slnx`** format (no legacy `.sln` files).
 - `.editorconfig` and the `.DotSettings` (ReSharper) drive style. Notable: `using` directives go **inside** the namespace, file-scoped namespaces, and `this.` qualification on member access — match the existing files.
 - The assembly is strong-name signed with `signingkey.snk`.
+- **Do not `git commit` or `git push` without the user's explicit approval.** Make the changes, let the user review, and commit only when they say so.
 - Commit messages follow the [gitmoji](https://gitmoji.dev) convention — prefix the message with the relevant emoji (e.g. `⬆️ Updated examples to aspire 9.3.1`, `🐛 Fixed ...`, `♻️ Refactored ...`).
 - `ExcludeLaunchProfile` is honored: when set, profile parsing is skipped and `launchSettings.json` is no longer required (endpoints must come from the caller via `WithHttpEndpoint`/`WithHttpsEndpoint` or from Kestrel config). `ExcludeKestrelEndpoints` is still not honored (see README limitations).
