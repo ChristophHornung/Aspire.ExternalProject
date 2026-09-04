@@ -59,6 +59,17 @@ builder.AddExternalProject("resourcename", "path/to/external/project.csproj", op
 }).WithHttpEndpoint();
 ```
 
+Set `UseWatch` to start the external project with `dotnet watch` instead of `dotnet run`, so source
+changes are recompiled (hot reloaded, or a rebuild/restart for edits that can't be hot reloaded).
+It runs non-interactively, so a rude edit restarts the process automatically instead of prompting.
+```csharp
+builder.AddExternalProject("resourcename", "path/to/external/project.csproj", options => {
+	options.UseWatch = true;
+});
+```
+Note: with `UseWatch` the process id changes when the app restarts, so the `Debug` command may need to
+be re-run after a restart. The URL-based debugger (`LaunchDebuggerUri`) tolerates restarts better.
+
 ## Limitations and Known Issues
 * Currently the `ExcludeKestrelEndpoints` property on the resource options is ignored.
 * Publish operations probably won't work as expected.

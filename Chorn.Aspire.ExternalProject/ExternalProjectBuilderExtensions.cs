@@ -125,7 +125,11 @@ public static class ExternalProjectBuilderExtensions
 			}
 		}
 
-		List<string> launchParameters = ["run", "--project", projectFileName, "--no-launch-profile"];
+		// Use 'dotnet watch' to recompile/hot-reload on source changes, or plain 'dotnet run' otherwise.
+		// Watch runs non-interactively so a rude edit restarts the process instead of prompting.
+		List<string> launchParameters = options.UseWatch
+			? ["watch", "--non-interactive", "--project", projectFileName, "run", "--no-launch-profile"]
+			: ["run", "--project", projectFileName, "--no-launch-profile"];
 		launchParameters.AddRange(launchProfileCommandLineArgs);
 
 		IResourceBuilder<ExecutableResource> execBuilder = builder.AddExecutable(

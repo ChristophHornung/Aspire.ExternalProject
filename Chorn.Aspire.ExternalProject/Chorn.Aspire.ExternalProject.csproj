@@ -17,6 +17,7 @@
 		<PackageReleaseNotes>
 			v.1.7.0
 			- Show the launch profile's launchUrl in the dashboard
+			- Added UseWatch option to run the external project with 'dotnet watch' (recompile/hot reload on change)
 			v.1.6.0
 			- Updated to target .NET 10
 			- Raised minimum Aspire to 13.4

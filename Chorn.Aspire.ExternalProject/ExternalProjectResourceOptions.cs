@@ -45,4 +45,18 @@ public class ExternalProjectResourceOptions : ProjectResourceOptions
 	/// order to avoid conflicts during build.
 	/// </summary>
 	public string? SolutionGroup { get; set; }
+
+	/// <summary>
+	/// If set to <c>true</c>, the external project is started with <c>dotnet watch</c> instead of
+	/// <c>dotnet run</c>, so source changes trigger a hot reload (or a rebuild/restart for edits
+	/// that cannot be hot reloaded).
+	/// </summary>
+	/// <remarks>
+	/// Runs <c>dotnet watch</c> non-interactively, so a rude edit restarts the process automatically
+	/// instead of prompting. Note that the process id changes on a restart, which can affect the
+	/// <c>Debug</c> command (a re-attach may be required); the URL-based debugger
+	/// (<see cref="LaunchDebuggerUri"/>) tolerates restarts better.
+	/// </remarks>
+	/// <value><c>true</c> to use <c>dotnet watch</c>; otherwise, <c>false</c>.</value>
+	public bool UseWatch { get; set; }
 }
