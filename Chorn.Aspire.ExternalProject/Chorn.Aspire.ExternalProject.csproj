@@ -6,7 +6,7 @@
 		<IsPackable>true</IsPackable>
 		<Authors>Christoph Hornung</Authors>
 		<PackageId>Chorn.Aspire.ExternalProject</PackageId>
-		<Version>1.8.0</Version>
+		<Version>1.9.0</Version>
 		<Copyright>Christoph Hornung</Copyright>
 		<Description>Adds the ability to add projects in other solutions to the Aspire AppHost.</Description>
 		<PackageProjectUrl>https://github.com/ChristophHornung/Aspire.ExternalProject</PackageProjectUrl>
@@ -15,6 +15,8 @@
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
 		<PackageReleaseNotes>
+			v.1.9.0
+			- Raised minimum Aspire to 17.0
 			v.1.8.0
 			- Added UseWatch option to run the external project with 'dotnet watch' (recompile/hot reload on change)
 			- Debug and Git Pull now work while an external project runs under watch
@@ -47,7 +49,7 @@
 		<AssemblyOriginatorKeyFile>..\signingkey.snk</AssemblyOriginatorKeyFile>
 	</PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="Aspire.Hosting.AppHost" Version="[13.5.0, 14.0.0)" />
+		<PackageReference Include="Aspire.Hosting.AppHost" Version="[17.0.0, 18.0.0)" />
 	</ItemGroup>
 	<ItemGroup>
 		<None Include="..\README.md" Pack="true" PackagePath="\" />
