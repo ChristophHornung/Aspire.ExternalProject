@@ -1,665 +1,213 @@
-﻿namespace Chorn.Aspire.ExternalProject;
+﻿using DotnetProjectResource = Aspire.Hosting.Dotnet.DotnetProjectResource;
 
-using System.Diagnostics;
-using System.Text.Json;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Server.Kestrel.Core;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.Extensions.Hosting;
+namespace Chorn.Aspire.ExternalProject;
 
 /// <summary>
 /// Extensions for adding external projects to the distributed application.
 /// </summary>
-public static class ExternalProjectBuilderExtensions
+/// <remarks>
+/// Since 2.0 the project is added with Aspire's own <c>AddDotnetProject</c>, which handles the launch profile,
+/// Kestrel endpoints, OpenTelemetry and the coordinated build. This library adds what is specific to projects
+/// that live outside the AppHost's solution: no IDE launch (Visual Studio cannot launch them), an optional
+/// <c>dotnet watch</c> launch, a debugger attach command and git support.
+/// </remarks>
+public static partial class ExternalProjectBuilderExtensions
 {
-	private static readonly JsonSerializerOptions jsonOptions = new()
+	private static string GetProjectPath(DotnetProjectResource resource)
 	{
-		AllowTrailingCommas = true,
-		PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-	};
+		IProjectMetadata metadata = resource.GetProjectMetadata();
+		return metadata.ProjectPath;
+	}
+
+	/// <summary>
+	/// Gets the folder git commands run in: the project folder for .NET projects, otherwise the working directory.
+	/// </summary>
+	private static string GetProjectFolder(ExecutableResource resource)
+	{
+		return resource is DotnetProjectResource project
+			? Path.GetDirectoryName(ExternalProjectBuilderExtensions.GetProjectPath(project)) ??
+			  resource.WorkingDirectory
+			: resource.WorkingDirectory;
+	}
 
 	/// <param name="builder">The builder to add the project to.</param>
 	extension(IDistributedApplicationBuilder builder)
 	{
 		/// <summary>
-		/// Adds the csproj file as an external project to the distributed application and tries to wire it up
-		/// the same way as AddProject would.
+		/// Adds a .NET project that lives outside the AppHost's solution (e.g. in another repository) to the
+		/// distributed application.
 		/// </summary>
+		/// <remarks>
+		/// This calls Aspire's <c>AddDotnetProject</c> and then applies the extras configured in
+		/// <paramref name="configure"/>. A relative <paramref name="csprojPath"/> is resolved against the AppHost
+		/// directory, the same way <c>AddDotnetProject</c> resolves it.
+		/// </remarks>
 		/// <param name="name">The name of the external project resource.</param>
-		/// <param name="csprojPath">The path to the csproj file.</param>
+		/// <param name="csprojPath">The path to the project file, or to a directory containing exactly one project.</param>
 		/// <param name="configure">A callback to configure the external project resource options.</param>
-		/// <returns>The resource builder for the executable resource.</returns>
-		public IResourceBuilder<ExecutableResource> AddExternalProject([ResourceName] string name, string csprojPath, Action<ExternalProjectResourceOptions>? configure = null)
+		/// <returns>The resource builder for the .NET project resource.</returns>
+		public IResourceBuilder<DotnetProjectResource> AddExternalProject([ResourceName] string name, string csprojPath,
+			Action<ExternalProjectResourceOptions>? configure = null)
 		{
+			ArgumentNullException.ThrowIfNull(name);
+			ArgumentNullException.ThrowIfNull(csprojPath);
+
 			ExternalProjectResourceOptions options = new();
 			configure?.Invoke(options);
 
-			if (!File.Exists(csprojPath))
+			string fullPath = Path.GetFullPath(Path.Combine(builder.AppHostDirectory, csprojPath));
+			if (!File.Exists(fullPath) && !Directory.Exists(fullPath))
 			{
-				throw new ArgumentException($"The csproj file '{csprojPath}' was not found.", nameof(csprojPath));
+				throw new ArgumentException($"The project '{fullPath}' was not found.", nameof(csprojPath));
 			}
 
-			string folder = Path.GetDirectoryName(csprojPath)!;
-			string launchSettingsPath = Path.Combine(folder, "Properties", "launchSettings.json");
-
-			// A launch profile (and therefore launchSettings.json) is required unless it is
-			// explicitly excluded via ExcludeLaunchProfile. In that case endpoints have to come
-			// from the caller (e.g. WithHttpEndpoint) or from Kestrel configuration instead.
-			string? launchSettingsJson = null;
-			if (!options.ExcludeLaunchProfile)
+			IResourceBuilder<DotnetProjectResource> project = builder.AddDotnetProject(name, fullPath, o =>
 			{
-				if (!File.Exists(launchSettingsPath))
+				o.LaunchProfileName = options.LaunchProfileName;
+				o.ExcludeLaunchProfile = options.ExcludeLaunchProfile;
+				o.ExcludeKestrelEndpoints = options.ExcludeKestrelEndpoints;
+			});
+
+			if (!options.LaunchFromIde)
+			{
+				project.WithoutIdeLaunch();
+			}
+
+			if (options.UseWatch)
+			{
+				project.WithDotnetWatch();
+			}
+
+			project.WithDebuggerAttachCommand(d =>
+			{
+				d.LaunchDebuggerUri = options.LaunchDebuggerUri;
+				d.AttachMode = options.DebuggerAttachMode;
+				d.LaunchDebuggerCommand = options.LaunchDebuggerCommand;
+				d.LaunchDebuggerCommandArguments = options.LaunchDebuggerCommandArguments;
+			});
+
+			if (!options.SkipGitSupport)
+			{
+				project.WithGitPullCommand(allowWhileRunning: options.UseWatch);
+				if (options.EnableGitHealthCheck)
 				{
-					throw new InvalidOperationException(
-						"Properties/launchSettings.json file not found. It is required unless ExcludeLaunchProfile is set.");
+					project.WithGitUpToDateHealthCheck();
 				}
-
-				launchSettingsJson = File.ReadAllText(launchSettingsPath);
 			}
 
-			return ExternalProjectBuilderExtensions.AddProject(builder, name, csprojPath, launchSettingsJson, options);
+			if (options.SolutionGroup != null)
+			{
+				project.WithSolutionGroup(options.SolutionGroup);
+			}
+
+			return project;
 		}
 	}
 
-	/// <param name="r">The resource.</param>
-	extension(Resource r)
+	/// <param name="builder">The .NET project resource builder.</param>
+	extension(IResourceBuilder<DotnetProjectResource> builder)
 	{
-		internal bool ShouldInjectEndpointEnvironment(EndpointReference e)
+		/// <summary>
+		/// Makes Aspire start the project itself instead of asking the IDE to launch it.
+		/// </summary>
+		/// <remarks>
+		/// When the AppHost runs under an IDE such as Visual Studio, Aspire normally hands .NET projects to the
+		/// IDE to launch. Visual Studio rejects projects that are not part of its solution, so the resource fails
+		/// to start. Without IDE launch, Aspire runs <c>dotnet run</c> (or the built app) itself and the IDE
+		/// debugger is not attached automatically; use <see cref="WithDebuggerAttachCommand{T}"/> instead.
+		/// This relies on the experimental <c>SupportsDebuggingAnnotation</c> (ASPIREEXTENSION001).
+		/// </remarks>
+		/// <returns>The same builder for chaining.</returns>
+		public IResourceBuilder<DotnetProjectResource> WithoutIdeLaunch()
 		{
-			EndpointAnnotation? endpoint = e.GetEndpointAnnotation();
-
-			if (endpoint?.UriScheme is not ("http" or "https")) // Only process http and https endpoints
-				//|| endpoint.TargetPortEnvironmentVariable is not null) // Skip if target port env variable was set
+#pragma warning disable ASPIREEXTENSION001 // SupportsDebuggingAnnotation is experimental
+			foreach (SupportsDebuggingAnnotation annotation in
+			         builder.Resource.Annotations.OfType<SupportsDebuggingAnnotation>().ToList())
 			{
-				return false;
+				builder.Resource.Annotations.Remove(annotation);
 			}
+#pragma warning restore ASPIREEXTENSION001
 
-			return true;
+			return builder;
 		}
-	}
 
-	private static IResourceBuilder<ExecutableResource> AddProject(IDistributedApplicationBuilder builder, string name,
-		string csprojFile, string? launchSettingsJson, ExternalProjectResourceOptions options)
-	{
-		string projectFolder = Path.GetDirectoryName(csprojFile)!;
-		string projectFileName = Path.GetFileName(csprojFile);
-
-		// Use system.text.json to Parse the launchSettings.json file to get the launch profile. The profile is the first one with a "commandName" of "Project".
-		// When the launch profile is excluded there is nothing to parse and no profile is applied.
-		LaunchProfile? launchProfile = null;
-		string? launchProfileName = null;
-		List<string> launchProfileCommandLineArgs = [];
-		if (!options.ExcludeLaunchProfile && launchSettingsJson != null)
+		/// <summary>
+		/// Starts the project with <c>dotnet watch</c> instead of <c>dotnet run</c>, so source changes trigger a
+		/// hot reload (or a rebuild/restart for edits that cannot be hot reloaded).
+		/// </summary>
+		/// <remarks>
+		/// Aspire 17 has no watch support for path-based projects, so this replaces the launch command.
+		/// <c>dotnet watch</c> runs non-interactively, so a rude edit restarts the process instead of prompting.
+		/// Aspire's coordinated build still runs before the launch and <c>dotnet watch</c> builds again.
+		/// The process id changes on a restart, so the debugger has to be re-attached.
+		/// When the project is launched by the IDE (see <see cref="WithoutIdeLaunch"/>) this has no effect.
+		/// </remarks>
+		/// <returns>The same builder for chaining.</returns>
+		public IResourceBuilder<DotnetProjectResource> WithDotnetWatch()
 		{
-			try
-			{
-				LaunchSettings launchSettings =
-					JsonSerializer.Deserialize<LaunchSettings>(launchSettingsJson,
-						ExternalProjectBuilderExtensions.jsonOptions)!;
+			DotnetProjectResource resource = builder.Resource;
+			string projectPath = ExternalProjectBuilderExtensions.GetProjectPath(resource);
+			string? configuration = builder.ApplicationBuilder.Configuration["AppHost:BuildConfiguration"];
 
-				KeyValuePair<string, LaunchProfile> launchProfileKeyPair =
-					launchSettings.Profiles.FirstOrDefault(f =>
-						options.LaunchProfileName != null && f.Key == options.LaunchProfileName);
-				if (launchProfileKeyPair.Value == null)
+			// A later WithLaunchToolArgs call replaces the 'dotnet run' invocation set up by AddDotnetProject.
+			// The launch profile's commandLineArgs are added by AddDotnetProject as ordinary arguments after these,
+			// so the trailing '--' hands them to the app.
+			// WithLaunchToolArgs is experimental (ASPIREEXTENSION001).
+#pragma warning disable ASPIREEXTENSION001
+			builder.WithLaunchToolArgs(ctx =>
+			{
+				// Without an IDE, Aspire switches the command to the built app after its coordinated build.
+				// Watch needs the 'dotnet' host, so make sure it is used.
+				ExecutableAnnotation executable = ctx.Resource.Annotations.OfType<ExecutableAnnotation>().Last();
+				executable.Command = "dotnet";
+
+				ctx.Args.Add("watch");
+				ctx.Args.Add("--non-interactive");
+				ctx.Args.Add("--project");
+				ctx.Args.Add(projectPath);
+				ctx.Args.Add("run");
+				if (!string.IsNullOrEmpty(configuration))
 				{
-					launchProfileKeyPair = launchSettings.Profiles.FirstOrDefault(f => f.Value.CommandName == "Project");
+					ctx.Args.Add("--configuration");
+					ctx.Args.Add(configuration);
 				}
 
-				if (launchProfileKeyPair.Key == null)
-				{
-					throw new InvalidOperationException(
-						options.LaunchProfileName != null
-							? $"No launch profile found with name '{options.LaunchProfileName}'"
-							: "No launch profile found with commandName 'Project'");
-				}
+				// The launch profile is applied by Aspire through the environment, like AddDotnetProject does.
+				ctx.Args.Add("--no-launch-profile");
+				ctx.Args.Add("--");
+			});
+#pragma warning restore ASPIREEXTENSION001
 
-				launchProfile = launchProfileKeyPair.Value;
-				launchProfileName = launchProfileKeyPair.Key;
-				launchProfileCommandLineArgs = ExternalProjectBuilderExtensions.GetLaunchProfileArgs(launchProfile);
-			}
-			catch (JsonException e)
-			{
-				throw new InvalidOperationException("Error parsing launchSettings.json", e);
-			}
+			return builder;
 		}
 
-		// Use 'dotnet watch' to recompile/hot-reload on source changes, or plain 'dotnet run' otherwise.
-		// Watch runs non-interactively so a rude edit restarts the process instead of prompting.
-		List<string> launchParameters = options.UseWatch
-			? ["watch", "--non-interactive", "--project", projectFileName, "run", "--no-launch-profile"]
-			: ["run", "--project", projectFileName, "--no-launch-profile"];
-		launchParameters.AddRange(launchProfileCommandLineArgs);
-
-		IResourceBuilder<ExecutableResource> execBuilder = builder.AddExecutable(
-				name, "dotnet",
-				projectFolder, launchParameters.ToArray())
-			.WithExecutableProjectDefaults(launchProfile, launchProfileName)
-			.WithCommand("Debug", "Debug",
-				ctx => ExternalProjectBuilderExtensions.AttachDebugger(ctx, name, options), new CommandOptions
-				{
-					UpdateState = ExternalProjectBuilderExtensions.DebugStateChange,
-					IconName = "Bug",
-					// Attaching a debugger is an interactive, local action, so keep it out of
-					// automation/MCP clients and only expose it in the dashboard.
-					Visibility = ResourceCommandVisibility.UI
-				});
-
-		if (!options.SkipGitSupport)
+		/// <summary>
+		/// Makes this project wait for every other resource in the same solution group, so projects that share
+		/// dependencies do not build at the same time.
+		/// </summary>
+		/// <remarks>
+		/// Aspire already builds path-based projects together before launching them, so this is rarely needed.
+		/// It can still help when projects rebuild themselves at launch, e.g. under an IDE or with
+		/// <see cref="WithDotnetWatch"/>.
+		/// </remarks>
+		/// <param name="solutionGroup">The name of the solution group.</param>
+		/// <returns>The same builder for chaining.</returns>
+		public IResourceBuilder<DotnetProjectResource> WithSolutionGroup(string solutionGroup)
 		{
-			string healthCheckKey = $"{name}_git_check";
+			ArgumentNullException.ThrowIfNull(solutionGroup);
 
-			execBuilder
-				.WithCommand("GitPull", "Git Pull",
-					ctx => ExternalProjectBuilderExtensions.GitUpdate(ctx, projectFolder),
-					new CommandOptions
-					{
-						UpdateState = ctx => ExternalProjectBuilderExtensions.GitUpdateStateChange(ctx, options.UseWatch),
-						IconName = "BranchRequest",
-						// git pull mutates the external project's working tree, so confirm first.
-						ConfirmationMessage = $"Pull the latest changes for '{name}' from git?"
-					});
-			if (options.EnableGitHealthCheck)
-			{
-				execBuilder.WithHealthCheck(healthCheckKey);
-				builder.Services.AddHealthChecks().Add(new HealthCheckRegistration(healthCheckKey,
-					_ => new GitUpToDateHealthCheck(projectFolder), null, null));
-			}
-		}
+			builder.WithAnnotation(new ExternalProjectSolutionGroupAnnotation(solutionGroup));
 
-		if (options.SolutionGroup != null)
-		{
-			execBuilder.WithAnnotation(new ExternalProjectSolutionGroupAnnotation(options.SolutionGroup));
-
-			// Find all other resources with the same solution group and add a dependency to them.
-			foreach (IResource resource in builder.Resources.Where(r => r != execBuilder.Resource))
+			foreach (IResource resource in builder.ApplicationBuilder.Resources.Where(r => r != builder.Resource))
 			{
 				if (resource.Annotations.OfType<ExternalProjectSolutionGroupAnnotation>()
-				    .Any(a => a.SolutionGroup == options.SolutionGroup))
+				    .Any(a => a.SolutionGroup == solutionGroup))
 				{
-					IResourceBuilder<IResource> resourceBuilder = builder.CreateResourceBuilder(resource);
-					execBuilder.WaitFor(resourceBuilder);
-				}
-			}
-		}
-
-		return execBuilder;
-	}
-
-	private static List<string> GetLaunchProfileArgs(LaunchProfile? launchProfile)
-	{
-		List<string> args = [];
-		if (launchProfile is not null && !string.IsNullOrWhiteSpace(launchProfile.CommandLineArgs))
-		{
-			List<string> cmdArgs = CommandLineArgsParser.Parse(launchProfile.CommandLineArgs);
-			if (cmdArgs.Count > 0)
-			{
-				args.Add("--");
-				args.AddRange(cmdArgs);
-			}
-		}
-
-		return args;
-	}
-
-	private static ResourceCommandState DebugStateChange(UpdateCommandStateContext arg)
-	{
-		return arg.ResourceSnapshot.State?.Text == "Running"
-			? ResourceCommandState.Enabled
-			: ResourceCommandState.Hidden;
-	}
-
-	private static ResourceCommandState GitUpdateStateChange(UpdateCommandStateContext arg, bool useWatch)
-	{
-		// Under 'dotnet watch' a pull is picked up while the app runs (recompile/hot reload), so allow
-		// it in any state. Otherwise only allow it when not running, since a plain 'dotnet run' would
-		// need a restart to pick up the changes.
-		if (useWatch)
-		{
-			return ResourceCommandState.Enabled;
-		}
-
-		return arg.ResourceSnapshot.State?.Text != "Running"
-			? ResourceCommandState.Enabled
-			: ResourceCommandState.Disabled;
-	}
-
-	private static async Task<ExecuteCommandResult> AttachDebugger(ExecuteCommandContext arg, string resourceName,
-		ExternalProjectResourceOptions externalProjectOptions)
-	{
-		if (externalProjectOptions.LaunchDebuggerUri != null)
-		{
-			return await ExternalProjectBuilderExtensions.AttachDebuggerViaUrl(arg, resourceName,
-				externalProjectOptions.LaunchDebuggerUri);
-		}
-
-		return ExternalProjectBuilderExtensions.AttachDebuggerViaVsjit(arg, resourceName, externalProjectOptions);
-	}
-
-	private static ExecuteCommandResult AttachDebuggerViaVsjit(ExecuteCommandContext arg, string resourceName,
-		ExternalProjectResourceOptions externalProjectOptions)
-	{
-		int? pid = ExternalProjectBuilderExtensions.GetPid(arg.Services, resourceName);
-		if (pid == null)
-		{
-			return new ExecuteCommandResult() { Success = false, Message = "No pid found" };
-		}
-
-		try
-		{
-			// The tracked pid is a dotnet process ('dotnet run', or 'dotnet watch' when UseWatch is set).
-			// The actual app is a descendant that is not a dotnet process: a direct child for 'dotnet run',
-			// but several levels down for 'dotnet watch' (watch -> dotnet-watch -> delta applier -> app).
-			// So we search for the nearest non-dotnet descendant, not just a direct child.
-			int? childPid = ExternalProjectBuilderExtensions.FindDescendantAppProcess(pid.Value);
-
-			if (childPid == null)
-			{
-				return new ExecuteCommandResult()
-					{ Success = false, Message = "No child process found for dotnet.exe" };
-			}
-
-			// Attach the debugger via vsjitdebugger
-			ProcessStartInfo startInfo = new ProcessStartInfo
-			{
-				FileName = externalProjectOptions.LaunchDebuggerCommand,
-				Arguments = externalProjectOptions.LaunchDebuggerCommandArguments.Replace("<pid>", childPid.Value.ToString()),
-				UseShellExecute = false,
-				RedirectStandardOutput = true,
-				RedirectStandardError = true,
-			};
-
-
-			Process.Start(startInfo);
-
-			// We don't wait for the process to exit, as the debugger will keep running.
-			return new ExecuteCommandResult() { Success = true };
-		}
-		catch (Exception e)
-		{
-			return new ExecuteCommandResult() { Success = false, Message = e.Message };
-		}
-	}
-
-	/// <summary>
-	/// Finds the process id of the nearest descendant of <paramref name="trackedPid"/> that is not a
-	/// dotnet process, i.e. the actual application process behind 'dotnet run' or 'dotnet watch'.
-	/// </summary>
-	private static int? FindDescendantAppProcess(int trackedPid)
-	{
-		Process[] all = Process.GetProcesses();
-		try
-		{
-			// Build a parent-pid -> children lookup (one parent query per process).
-			ILookup<int, Process> childrenByParent = all.ToLookup(p => p.GetParent()?.Id ?? -1);
-
-			// Breadth-first from the tracked process so we return the shallowest non-dotnet descendant.
-			Queue<int> queue = new();
-			queue.Enqueue(trackedPid);
-			HashSet<int> seen = [trackedPid];
-			while (queue.Count > 0)
-			{
-				int parentId = queue.Dequeue();
-				foreach (Process candidate in childrenByParent[parentId])
-				{
-					// Skip the Windows console host helper; it is a non-dotnet descendant but never the app.
-					if (string.Equals(candidate.ProcessName, "conhost", StringComparison.OrdinalIgnoreCase))
-					{
-						continue;
-					}
-
-					if (!string.Equals(candidate.ProcessName, "dotnet", StringComparison.OrdinalIgnoreCase))
-					{
-						return candidate.Id;
-					}
-
-					if (seen.Add(candidate.Id))
-					{
-						queue.Enqueue(candidate.Id);
-					}
-				}
-			}
-
-			return null;
-		}
-		finally
-		{
-			// Release the native handles opened by Process.GetProcesses().
-			foreach (Process p in all)
-			{
-				p.Dispose();
-			}
-		}
-	}
-
-	private static async Task<ExecuteCommandResult> AttachDebuggerViaUrl(ExecuteCommandContext arg, string resourceName,
-		string launchDebuggerUri)
-	{
-		// If the launch debugger uri is set we call that instead of trying to attach the debugger via vsjitdebugger.
-		string? baseUrl = ExternalProjectBuilderExtensions.GetHttpsOrHttpBaseUrl(arg.Services, resourceName);
-		if (baseUrl == null)
-		{
-			return new ExecuteCommandResult() { Success = false, Message = "No base url found" };
-		}
-
-		string url = $"{baseUrl}{launchDebuggerUri}";
-		// TODO: Should we register a HttpClient as a service instead of creating a new one each time?
-		// No HttpClientFactory or HttpClient is registered by default, so we create a new one.
-		// (We could switch to  public static IResourceBuilder<TResource> WithHttpCommand<TResource>()
-		// (it registers a IHttpClientFactory service)
-		HttpClient httpClient = new HttpClient();
-
-		// POST to the launch debugger uri.
-		try
-		{
-			HttpResponseMessage result = await httpClient.PostAsync(url, new StringContent(""));
-
-			if (!result.IsSuccessStatusCode)
-			{
-				return new ExecuteCommandResult() { Success = false, Message = result.ReasonPhrase };
-			}
-
-			return new ExecuteCommandResult() { Success = true };
-		}
-		catch (Exception e)
-		{
-			return new ExecuteCommandResult() { Success = false, Message = e.Message };
-		}
-	}
-
-	private static int? GetPid(IServiceProvider serviceProvider, string resourceName)
-	{
-		ResourceNotificationService notificationService =
-			serviceProvider.GetRequiredService<ResourceNotificationService>();
-
-		if (notificationService.TryGetCurrentState(resourceName, out ResourceEvent? resourceEvent))
-		{
-			ResourcePropertySnapshot? pidProperty =
-				resourceEvent.Snapshot.Properties.FirstOrDefault(p => p.Name == "executable.pid");
-			if (pidProperty != null && pidProperty.Value is int pid && pid != 0)
-			{
-				return pid;
-			}
-		}
-
-		return null;
-	}
-
-	private static string? GetHttpsOrHttpBaseUrl(IServiceProvider serviceProvider, string resourceName)
-	{
-		ResourceNotificationService notificationService =
-			serviceProvider.GetRequiredService<ResourceNotificationService>();
-
-		if (notificationService.TryGetCurrentState(resourceName, out ResourceEvent? resourceEvent))
-		{
-			UrlSnapshot? baseUrl =
-				resourceEvent.Snapshot.Urls.FirstOrDefault(p => p.Name == "https target port") ??
-				resourceEvent.Snapshot.Urls.FirstOrDefault(p => p.Name == "https") ??
-				resourceEvent.Snapshot.Urls.FirstOrDefault(p => p.Name == "http target port") ??
-				resourceEvent.Snapshot.Urls.FirstOrDefault(p => p.Name == "http");
-			return baseUrl?.Url;
-		}
-
-		return null;
-	}
-
-	private static async Task<ExecuteCommandResult> GitUpdate(ExecuteCommandContext arg, string projectFolder)
-	{
-		// Call git pull in the project folder.
-		ProcessStartInfo startInfo = new ProcessStartInfo
-		{
-			FileName = "git",
-			Arguments = "pull",
-			WorkingDirectory = projectFolder,
-			UseShellExecute = false,
-			RedirectStandardOutput = true,
-			RedirectStandardError = true,
-		};
-
-		Process process = Process.Start(startInfo)!;
-		await process.WaitForExitAsync();
-
-		// Read the output and error streams.
-		string output = await process.StandardOutput.ReadToEndAsync();
-		string error = await process.StandardError.ReadToEndAsync();
-
-		bool success = process.ExitCode == 0;
-
-		// Surface the git output in the dashboard: a short message plus the full text
-		// (stdout on success, stderr on failure) as structured command result data.
-		string trimmedOutput = output.Trim();
-		string trimmedError = error.Trim();
-		string message = success
-			? (trimmedOutput.Length > 0 ? trimmedOutput : "git pull completed.")
-			: (trimmedError.Length > 0 ? trimmedError : "git pull failed.");
-
-		return new ExecuteCommandResult
-		{
-			Success = success,
-			Message = message,
-			Data = new CommandResultData
-			{
-				Value = success ? output : (trimmedError.Length > 0 ? error : output),
-				Format = CommandResultFormat.Text
-			}
-		};
-	}
-
-	/// <param name="builder">The resource builder.</param>
-	extension(IResourceBuilder<ExecutableResource> builder)
-	{
-		private IResourceBuilder<ExecutableResource> WithExecutableProjectDefaults(LaunchProfile? launchProfile, string? launchProfileName)
-		{
-			// Taken mainly from the WithProjectDefaults of Aspire base.
-
-			// We only want to turn these on for .NET projects, ConfigureOtlpEnvironment works for any resource type that
-			// implements IDistributedApplicationResourceWithEnvironment.
-			builder.WithEnvironment("OTEL_DOTNET_EXPERIMENTAL_OTLP_EMIT_EXCEPTION_LOG_ATTRIBUTES", "true");
-			builder.WithEnvironment("OTEL_DOTNET_EXPERIMENTAL_OTLP_EMIT_EVENT_LOG_ATTRIBUTES", "true");
-			// .NET SDK has experimental support for retries. Enable with env var.
-			// https://github.com/open-telemetry/opentelemetry-dotnet/pull/5495
-			// Remove once retry feature in opentelemetry-dotnet is enabled by default.
-			builder.WithEnvironment("OTEL_DOTNET_EXPERIMENTAL_OTLP_RETRY", "in_memory");
-
-			// OTEL settings that are used to improve local development experience.
-			if (builder.ApplicationBuilder.ExecutionContext.IsRunMode &&
-			    builder.ApplicationBuilder.Environment.IsDevelopment())
-			{
-				// Disable URL query redaction, e.g. ?myvalue=Redacted
-				builder.WithEnvironment("OTEL_DOTNET_EXPERIMENTAL_ASPNETCORE_DISABLE_URL_QUERY_REDACTION", "true");
-				builder.WithEnvironment("OTEL_DOTNET_EXPERIMENTAL_HTTPCLIENT_DISABLE_URL_QUERY_REDACTION", "true");
-			}
-
-			builder.WithOtlpExporter();
-
-			ExecutableResource projectResource = builder.Resource;
-
-			// Get all the endpoints from the Kestrel configuration
-			IConfiguration config = ExternalProjectBuilderExtensions.GetConfiguration(projectResource);
-			IEnumerable<IConfigurationSection> kestrelEndpoints = config.GetSection("Kestrel:Endpoints").GetChildren();
-
-			// Helper to change the transport to http2 if needed
-			bool isHttp2ConfiguredInKestrelEndpointDefaults =
-				config["Kestrel:EndpointDefaults:Protocols"] == nameof(HttpProtocols.Http2);
-			var adjustTransport = (EndpointAnnotation e, string? bindingLevelProtocols = null) =>
-			{
-				if (bindingLevelProtocols != null)
-				{
-					// If the Kestrel endpoint has an explicit protocol, use that and ignore any EndpointDefaults
-					e.Transport = bindingLevelProtocols == nameof(HttpProtocols.Http2) ? "http2" : e.Transport;
-				}
-				else if (isHttp2ConfiguredInKestrelEndpointDefaults)
-				{
-					// Fall back to honoring Http2 specified at EndpointDefaults level
-					e.Transport = "http2";
-				}
-			};
-
-			if (builder.ApplicationBuilder.ExecutionContext.IsRunMode)
-			{
-				// We don't need to set ASPNETCORE_URLS if we have Kestrel endpoints configured
-				// as Kestrel will get everything it needs from the config.
-				//if (!kestrelEndpointsByScheme.Any())
-				{
-					builder.SetAspNetCoreUrls();
-				}
-
-				// Without a launch profile there is nothing more to apply here. ASPNETCORE_URLS is
-				// still synthesized above from whatever endpoints the caller (e.g. WithHttpEndpoint)
-				// or Kestrel configuration provide.
-				if (launchProfile is null || launchProfileName is null)
-				{
-					return builder;
-				}
-
-				// If we had found any Kestrel endpoints, we ignore the launch profile endpoints,
-				// to match the Kestrel runtime behavior.
-				string[] urlsFromApplicationUrl =
-					launchProfile.ApplicationUrl?.Split(';', StringSplitOptions.RemoveEmptyEntries) ?? [];
-				Dictionary<string, int> endpointCountByScheme = [];
-				foreach (string url in urlsFromApplicationUrl)
-				{
-					BindingAddress bindingAddress = BindingAddress.Parse(url);
-
-					// Keep track of how many endpoints we have for each scheme
-					endpointCountByScheme.TryGetValue(bindingAddress.Scheme, out int count);
-					endpointCountByScheme[bindingAddress.Scheme] = count + 1;
-
-					// If we have multiple for the same scheme, we differentiate them by appending a number.
-					// We only do this starting with the second endpoint, so that the first stays just http/https.
-					// This allows us to keep the same behavior as "dotnet run".
-					// Also, note that we only do this in Run mode, as in Publish mode those extra endpoints
-					// with generic names would not be easily usable.
-					string endpointName = bindingAddress.Scheme;
-					if (endpointCountByScheme[bindingAddress.Scheme] > 1)
-					{
-						endpointName += endpointCountByScheme[bindingAddress.Scheme];
-					}
-
-					builder.WithEndpoint(endpointName, e =>
-						{
-							e.Port = bindingAddress.Port;
-							e.TargetHost = bindingAddress.Host;
-							e.UriScheme = bindingAddress.Scheme;
-							adjustTransport(e);
-						},
-						createIfNotExists: true);
-				}
-
-				builder.WithEnvironment(context =>
-				{
-					// Populate DOTNET_LAUNCH_PROFILE environment variable for consistency with "dotnet run" and "dotnet watch".
-					context.EnvironmentVariables.TryAdd("DOTNET_LAUNCH_PROFILE", launchProfileName);
-
-					foreach (KeyValuePair<string, string> envVar in launchProfile.EnvironmentVariables)
-					{
-						string value = Environment.ExpandEnvironmentVariables(envVar.Value);
-						context.EnvironmentVariables.TryAdd(envVar.Key, value);
-					}
-				});
-
-				// Mimic Aspire's launch-profile launchUrl handling so the dashboard shows the launch
-				// URL (e.g. an OpenAPI endpoint) for the external project, the same way AddProject does.
-				// Aspire moved this from a ProjectResource-only snapshot check to a WithUrls annotation
-				// that works for any resource with endpoints (see GitHub issue #2).
-				if (!string.IsNullOrWhiteSpace(launchProfile.LaunchUrl) &&
-				    Uri.TryCreate(launchProfile.LaunchUrl, UriKind.RelativeOrAbsolute, out Uri? parsedLaunchUri))
-				{
-					string launchUrl = launchProfile.LaunchUrl;
-					Uri launchUri = parsedLaunchUri;
-					builder.WithUrls(context =>
-					{
-						// Combine the launch URL with each launch-profile endpoint URL, matching Aspire:
-						// absolute launchUrl replaces the endpoint URL, relative is appended to it.
-						foreach (ResourceUrlAnnotation url in context.Urls.Where(u => u.Endpoint is not null))
-						{
-							url.Url = launchUri.IsAbsoluteUri
-								? launchUrl
-								: new Uri(new Uri(url.Url), launchUri).ToString();
-						}
-					});
+					builder.WaitFor(builder.ApplicationBuilder.CreateResourceBuilder(resource));
 				}
 			}
 
 			return builder;
 		}
-
-		private void SetAspNetCoreUrls()
-		{
-			builder.WithEnvironment(context =>
-			{
-				if (context.EnvironmentVariables.ContainsKey("ASPNETCORE_URLS"))
-				{
-					// If the user has already set ASPNETCORE_URLS, we don't want to override it.
-					return;
-				}
-
-				ReferenceExpressionBuilder aspnetCoreUrls = new();
-
-				bool processedHttpsPort = false;
-				bool first = true;
-
-				// Turn http and https endpoints into a single ASPNETCORE_URLS environment variable.
-				foreach (EndpointReference e in builder.Resource.GetEndpoints()
-					         .Where(builder.Resource.ShouldInjectEndpointEnvironment))
-				{
-					if (!first)
-					{
-						aspnetCoreUrls.AppendLiteral(";");
-					}
-
-					if (!processedHttpsPort && e.GetEndpointAnnotation()?.UriScheme == "https")
-					{
-						// Add the environment variable for the HTTPS port if we have an HTTPS service. This will make sure the
-						// HTTPS redirection middleware avoids redirecting to the internal port.
-						context.EnvironmentVariables["ASPNETCORE_HTTPS_PORT"] = e.Property(EndpointProperty.Port);
-
-						processedHttpsPort = true;
-					}
-
-					// If the endpoint is proxied, we will use localhost as the target host since DCP will be forwarding the traffic
-					string targetHost = e.GetEndpointAnnotation()?.IsProxied == true
-						? "localhost"
-						: e.GetEndpointAnnotation()?.TargetHost ?? "localhost";
-
-					aspnetCoreUrls.Append(
-						$"{e.Property(EndpointProperty.Scheme)}://{targetHost}:{e.Property(EndpointProperty.TargetPort)}");
-					first = false;
-				}
-
-				if (!aspnetCoreUrls.IsEmpty)
-				{
-					// Combine into a single expression
-					context.EnvironmentVariables["ASPNETCORE_URLS"] = aspnetCoreUrls.Build();
-				}
-			});
-		}
-	}
-
-	/// <summary>
-	/// Extensions for EndpointReference.
-	/// </summary>
-	extension(EndpointReference e)
-	{
-		private EndpointAnnotation? GetEndpointAnnotation() =>
-			e.Resource.Annotations.OfType<EndpointAnnotation>()
-				.SingleOrDefault(a => StringComparer.OrdinalIgnoreCase.Equals(a.Name, e.EndpointName));
-	}
-
-	private static IConfiguration GetConfiguration(ExecutableResource projectResource)
-	{
-		// Was: var projectMetadata = projectResource.GetProjectMetadata();
-
-		string projectDirectoryPath = Path.GetDirectoryName(projectResource.WorkingDirectory)!;
-		string appSettingsPath = Path.Combine(projectDirectoryPath, "appsettings.json");
-		string? env = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ??
-		              Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
-		string appSettingsEnvironmentPath = Path.Combine(projectDirectoryPath, $"appsettings.{env}.json");
-
-		ConfigurationBuilder configBuilder = new ConfigurationBuilder();
-		configBuilder.AddJsonFile(appSettingsPath, optional: true);
-		configBuilder.AddJsonFile(appSettingsEnvironmentPath, optional: true);
-		return configBuilder.Build();
 	}
 }

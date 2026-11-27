@@ -13,7 +13,8 @@ internal class GitUpToDateHealthCheck : IHealthCheck
 	}
 
 	/// <inheritdoc />
-	public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = new CancellationToken())
+	public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context,
+		CancellationToken cancellationToken = new CancellationToken())
 	{
 		// Check if the git repository is up to date
 		// If not, return HealthCheckResult.Unhealthy("Git repository is not up to date")

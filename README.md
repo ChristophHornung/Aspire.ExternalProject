@@ -1,8 +1,17 @@
 # Aspire.ExternalProject
-Aspire.ExternalProject is a .NET Aspire package to add a .NET project that is external to the current solution.
+Aspire.ExternalProject is a .NET Aspire package for running a .NET project that is external to the current solution
+(e.g. in another repository) from your AppHost.
 
 [![NuGet version (Chorn.Aspire.ExternalProject)](https://img.shields.io/nuget/v/Chorn.Aspire.ExternalProject.svg?style=flat-square)](https://www.nuget.org/packages/Chorn.Aspire.ExternalProject/)
 
+Since Aspire 17, Aspire itself can add a project by path with `AddDotnetProject` (package `Aspire.Hosting.Dotnet`).
+Version 2.0 of this package builds on it and adds what external projects still need:
+
+* **No IDE launch.** Under Visual Studio, Aspire hands .NET projects to the IDE to launch, and Visual Studio rejects
+  projects that are not in its solution, so the resource fails to start. External projects are started by Aspire instead.
+* **`dotnet watch`.** Aspire 17 has no watch support for path-based projects.
+* **A `Debug` dashboard command** to attach a debugger to the running project.
+* **Git support:** a `Git Pull` dashboard command and an optional git up-to-date health check.
 
 ## Usage
 Install the package from NuGet:
@@ -10,49 +19,66 @@ Install the package from NuGet:
 dotnet add package Chorn.Aspire.ExternalProject
 ```
 
-You can now add an external project via its csproj file in your app host:
+Add an external project via its project file in your AppHost. A relative path is resolved against the AppHost directory:
 ```csharp
-builder.AddExternalProject("resourcename", "path/to/external/project.csproj");
+builder.AddExternalProject("resourcename", "../../OtherRepo/src/Api/Api.csproj");
 ```
 
-This will add the project as an executable resource and wire up all the magic that the normal Aspire `AddProject` method does.
-In addition it will use 'dotnet run' to start the external project so automatic build and run should work as expected.
+This calls Aspire's `AddDotnetProject`, so the launch profile, Kestrel endpoints, OpenTelemetry, the dashboard
+launch URL and the coordinated build all work the way Aspire does them. It also adds two dashboard commands:
 
-To debug the external project, you can use the `Debug` command in the dashboard or just attach the debugger manually
-from your IDE.
+* `Debug` - attaches a debugger to the external project.
+* `Git Pull` - pulls the latest changes from the git repository of the external project.
 
-It will also add two commands to the dashboard:
+### Building blocks
+`AddExternalProject` is a shortcut. You can also start from Aspire's `AddDotnetProject` and add only what you need:
+```csharp
+builder.AddDotnetProject("resourcename", "../../OtherRepo/src/Api/Api.csproj")
+	.WithoutIdeLaunch()               // let Aspire start it, Visual Studio can't
+	.WithDotnetWatch()                // recompile/hot reload on change
+	.WithDebuggerAttachCommand(d => d.LaunchDebuggerUri = "/debug")
+	.WithGitPullCommand()
+	.WithGitUpToDateHealthCheck();
+```
+`WithDebuggerAttachCommand`, `WithGitPullCommand` and `WithGitUpToDateHealthCheck` work on any executable resource.
 
-* 'Debug' - Starts the debugger for the external project by starting the manual 'attach to VisualStudio' process.
-* 'Git Pull" - Pulls the latest changes from the git repository of the external project.
-
-You can remove the GIT integration by setting the `SkipGitSupport` in the resource options.
+### Options
+Remove the git integration with `SkipGitSupport`:
 ```csharp
 builder.AddExternalProject("resourcename", "path/to/external/project.csproj", options => {
 	options.SkipGitSupport = true;
 });
 ```
 
-You can add a GIT up-to-date health check to the external project by setting the `EnableGitHealthCheck` in the resource options.
+Add a git up-to-date health check with `EnableGitHealthCheck`:
 ```csharp
 builder.AddExternalProject("resourcename", "path/to/external/project.csproj", options => {
 	options.EnableGitHealthCheck = true;
 });
 ```
 
-By default we use `vsjitdebugger` to attach the debugger to the external project. This does not seem to work reliably, as a viable alternative
-you can set the `DebuggerUri` in the resource options to call an endpoint in your external project to start the debugger via
-`Debugger.Launch()`. (See the sample for the external project code)
+By default the `Debug` command attaches through a running Visual Studio (Windows only), the same way
+Debug → Attach to Process does:
+1. a Visual Studio whose open solution contains the external project, so breakpoints in its source are hit
+   (one that is not debugging yet is preferred),
+2. otherwise the Visual Studio that debugs the AppHost,
+3. otherwise `LaunchDebuggerCommand` (`vsjitdebugger` by default).
+
+So the easiest way to debug an external project is to open its solution in a second Visual Studio and click `Debug`
+in the dashboard. Visual Studio instances running at a different elevation than the AppHost (e.g. "Run as
+administrator") can't be reached. Set `DebuggerAttachMode = DebuggerAttachMode.Command` to always use
+`LaunchDebuggerCommand`, e.g. for Rider.
+
+As an alternative that works with any debugger, set `LaunchDebuggerUri` to an endpoint in your external project that
+starts the debugger via `Debugger.Launch()` (see the sample for the external project code):
 ```csharp
 builder.AddExternalProject("resourcename", "path/to/external/project.csproj", options => {
-	options.LaunchDebuggerUri = "/debugger";
+	options.LaunchDebuggerUri = "/debug";
 });
 ```
 
-By default a `Properties/launchSettings.json` with a launch profile is required, and its endpoints and
-environment variables are applied to the resource. If your external project has no (usable) launch profile,
-set `ExcludeLaunchProfile` to skip it entirely. `launchSettings.json` is then no longer required and you
-declare the endpoints yourself (or rely on Kestrel configuration).
+The launch profile options are passed to Aspire: `LaunchProfileName` picks a profile, `ExcludeLaunchProfile` skips
+`launchSettings.json` entirely and `ExcludeKestrelEndpoints` ignores endpoints from Kestrel configuration.
 ```csharp
 builder.AddExternalProject("resourcename", "path/to/external/project.csproj", options => {
 	options.ExcludeLaunchProfile = true;
@@ -70,16 +96,30 @@ builder.AddExternalProject("resourcename", "path/to/external/project.csproj", op
 Note: with `UseWatch` the process id changes when the app restarts, so the `Debug` command may need to
 be re-run after a restart. The URL-based debugger (`LaunchDebuggerUri`) tolerates restarts better.
 
+Set `LaunchFromIde` to let the IDE launch the project like Aspire does for its own projects. Only do this if your
+IDE can launch the project (Visual Studio can't for projects outside its solution); `UseWatch` is then ignored under
+the IDE.
+
+## Migrating from 1.x
+* `AddExternalProject` now returns `IResourceBuilder<DotnetProjectResource>` instead of
+  `IResourceBuilder<ExecutableResource>`.
+* A relative project path is resolved against the AppHost directory, not the current directory.
+* `launchSettings.json` is no longer required.
+* `ExcludeKestrelEndpoints` is now honored.
+* Your AppHost needs the `Aspire.Hosting.Dotnet` package (it comes with this package as a dependency).
+
 ## Limitations and Known Issues
-* Currently the `ExcludeKestrelEndpoints` property on the resource options is ignored.
-* Publish operations probably won't work as expected.
-* Starting the debugger via the default 'Debug' command in the dashboard might not attach correctly via vsjitdebugger.
-* The most reliable and quick was to debug is to open a VS solution and simply use the "Debug->Reattach to Process" option.
-  If you are using Rider you can set the `LaunchDebuggerCommand/Arguments` to start rider with the correct process and solution.
-* Running multiple external projects at the same time might lead to build problems if they have common dependencies.
-If you run into any issues you can set the `options.SolutionGroup` property, which will make sure the projects in the same
-solution group wait for each other, make sure to have at least one health check that indicates
-the project started. Or try an explicit start for the external projects to avoid this issue. (Via `WithExplicitStart()`)
+* The `Debug` command can't find the app when it runs as `dotnet App.dll` (no apphost) under `dotnet run` or
+  `dotnet watch`.
+* The `vsjitdebugger` fallback often fails with "No installed debugger has Just-In-Time debugging enabled", even when
+  JIT debugging is enabled. The Visual Studio attach (the default) avoids it.
+  If you are using Rider you can set the `LaunchDebuggerCommand/Arguments` to start Rider with the correct process and solution.
+* Turning off IDE launch and the `dotnet watch` launch rely on experimental Aspire APIs (`ASPIREEXTENSION001`),
+  so this package is pinned to one Aspire major version.
+* With `UseWatch`, Aspire's coordinated build runs first and `dotnet watch` builds again.
+* Aspire builds external projects together before launching them, so `SolutionGroup` is rarely needed anymore.
+  It can still help when projects rebuild themselves at launch (under an IDE, or with `UseWatch`).
+* Publishing goes through Aspire's .NET project publishing, which has not been tested with this package.
 
 ## Motivation
 Often it is not feasible to have a single solution for all projects, especially when working across multiple repositories.
@@ -87,11 +127,12 @@ With this package you can temporarily add and remove external projects to your A
 still being able to debug them.
 
 ## Technical Details
-We bascially replicate the work done in the `AddProject` method, but with a few tweaks to make it work with external projects.
+The project is added with Aspire's `AddDotnetProject`. `WithoutIdeLaunch` removes the resource's
+`SupportsDebuggingAnnotation`, so Aspire starts the process itself instead of sending it to the IDE.
+`WithDotnetWatch` replaces the launch command via `WithLaunchToolArgs`.
 
-Starting the debugger is done by starting the `vsjitdebugger` process with the pid of the external project.
-
-## Future Work
-* Add support for the `ExcludeKestrelEndpoints` property.
-* Replicate the publish functionality if possible.
-* Maybe switch to a custom resource type to make the external project more visible in the dashboard.
+The `Debug` command finds the app process from the process id Aspire reports: without an IDE that is the app itself,
+under an IDE it is a `dotnet run` process with the app as its child, and under `dotnet watch` the app is further down.
+It then looks up the running Visual Studio instances in the Windows running object table (`!VisualStudio.DTE.*`),
+picks one as described above and calls its debugger's `Attach()` for that process. Only if none can attach does it
+start `vsjitdebugger` with the app's process id.

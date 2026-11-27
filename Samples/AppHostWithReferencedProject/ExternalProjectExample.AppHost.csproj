@@ -1,18 +1,20 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-	<Sdk Name="Aspire.AppHost.Sdk" Version="17.0.0" />
-
 	<PropertyGroup>
 		<OutputType>Exe</OutputType>
-		<TargetFramework>net10.0</TargetFramework>
+		<TargetFramework>net11.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<UserSecretsId>619378f2-26d7-48a6-8875-0fee40190f66</UserSecretsId>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\..\Chorn.Aspire.ExternalProject\Chorn.Aspire.ExternalProject.csproj"
-											IsAspireProjectResource="false" />
+		<PackageReference Include="Aspire.Hosting.AppHost" Version="17.0.0" />
+		<PackageReference Include="Aspire.Hosting.Dotnet" Version="17.0.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\Chorn.Aspire.ExternalProject\Chorn.Aspire.ExternalProject.csproj" />
 	</ItemGroup>
 
 </Project>
